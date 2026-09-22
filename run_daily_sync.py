@@ -45,7 +45,8 @@ def normalize_price(val):
     nums = re.findall(r'[\d\.]+', str(val))
     if nums:
         try:
-            return float(nums[0])
+            # 当存在改价情况（如 '197.5$/181.5$/'）时，取修改后的最新底价 nums[-1]
+            return float(nums[-1])
         except ValueError:
             pass
     return None

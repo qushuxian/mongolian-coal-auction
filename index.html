@@ -2299,7 +2299,15 @@
                 .filter(d => d.product.includes('中挥发'))
                 .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-            const dates = data.map(d => d.date.replace('2026-', ''));
+            const dates = data.map(d => {
+                let portTag = '';
+                if (d.location) {
+                    if (d.location.includes('甘其毛都')) portTag = ' (甘)';
+                    else if (d.location.includes('满都拉')) portTag = ' (满)';
+                    else if (d.location.includes('策克')) portTag = ' (策)';
+                }
+                return d.date.replace('2026-', '') + portTag;
+            });
             const floorPrices = data.map(d => d.floorPrice);
             const dealPrices = data.map(d => d.hasDealt && !d.isUnsold ? d.dealPrice : '-');
             const rates = data.map(d => d.hasDealt && !d.isUnsold ? d.rate : '-');
@@ -2362,6 +2370,9 @@
                     formatter: function (params) {
                         const item = data[params[0].dataIndex];
                         let html = `<strong style="color: #0F172A;">${params[0].axisValue} · ${item ? item.seller : ''}</strong><br/>`;
+                        if (item && item.location) {
+                            html += `<span style="color: #64748B; font-size: 0.78rem;">📍 ${item.location}</span><br/>`;
+                        }
                         params.forEach(p => {
                             if (p.seriesName.includes('最低价')) {
                                 html += `${p.marker} ${p.seriesName}: <strong style="color: #475569;">$${p.value}/t</strong><br/>`;

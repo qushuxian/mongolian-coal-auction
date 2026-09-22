@@ -157,6 +157,8 @@ def save_daily_auctions(query_date: str, items: List[Dict[str, Any]], db_path: s
     saved_count = 0
 
     with conn:
+        # 先清除当日可能残留的旧快照/未匹配通告，确保全量幂等覆盖
+        conn.execute("DELETE FROM coal_auctions WHERE auction_date = ?", (query_date,))
         for item in items:
             # 基础属性
             prod = item.get("产品", "煤炭") or "煤炭"
