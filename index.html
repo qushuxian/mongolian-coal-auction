@@ -1,0 +1,4264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mongolian Coal Auction Data Dashboard</title>
+    <!-- Google Fonts 商务与技术字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap"
+        rel="stylesheet">
+    <!-- Apache ECharts 5.5.0 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <!-- SheetJS 0.18.5 用于直接解析《蒙煤拍卖临时记录.xlsx》Sheet1 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- html2canvas 用于报告长图导出 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- 本地离线直连数据源 (由 db_manager.py 自动从 SQLite 导出至 data/ 目录，支持 file:// 协议零跨域秒开) -->
+    <script src="./data/auction_data.js"></script>
+
+    <style>
+        :root {
+            --bg-base: #F8FAFC;
+            --bg-surface: #FFFFFF;
+            --bg-card: #FFFFFF;
+            --bg-card-hover: #F1F5F9;
+            --border: #E2E8F0;
+            --border-light: #CBD5E1;
+
+            --text-primary: #0F172A;
+            --text-secondary: #475569;
+            --text-muted: #64748B;
+
+            --primary: #0284C7;
+            --primary-glow: rgba(2, 132, 199, 0.12);
+
+            --coking-color: #0284C7;
+            /* 洗精主焦煤 (天蓝/群青) */
+            --mid-coking-color: #D97706;
+            /* 中挥发份性焦煤 (琥珀金橙) */
+            --semi-soft-color: #059669;
+            /* 洗选半软焦煤 (翡翠绿) */
+
+            --floor-color: #94A3B8;
+            /* 拍卖最低价 */
+            --deal-color: #0284C7;
+            /* 成交价 */
+            --rate-color: #E11D48;
+            /* 涨幅走势 */
+
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-display: 'Outfit', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            line-height: 1.5;
+            padding-bottom: 40px;
+            background-image:
+                radial-gradient(circle at 10% 10%, rgba(2, 132, 199, 0.04) 0%, transparent 45%),
+                radial-gradient(circle at 90% 80%, rgba(217, 119, 6, 0.03) 0%, transparent 50%);
+        }
+
+        /* 顶部导航与操作栏 */
+        .exec-header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            padding: 14px 28px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .header-inner {
+            max-width: 1680px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .brand-lockup {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand-icon-box {
+            width: 42px;
+            height: 42px;
+            background: #F1F5F9;
+            border: 1px solid rgba(2, 132, 199, 0.25);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .brand-meta h1 {
+            font-family: var(--font-display);
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #0F172A;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .brand-badge {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 600;
+            background: rgba(2, 132, 199, 0.08);
+            border: 1px solid rgba(2, 132, 199, 0.25);
+            color: var(--primary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.05em;
+        }
+
+        .brand-sub {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 状态指示器小徽章 */
+        .sync-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(5, 150, 105, 0.08);
+            border: 1px solid rgba(5, 150, 105, 0.25);
+            color: #059669;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+        }
+
+        .sync-badge.sync-warning {
+            background: rgba(217, 119, 6, 0.08);
+            border-color: rgba(217, 119, 6, 0.25);
+            color: #D97706;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .action-btn {
+            background: #FFFFFF;
+            border: 1px solid var(--border-light);
+            color: #334155;
+            padding: 7px 14px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        }
+
+        .action-btn:hover {
+            background: #F8FAFC;
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .action-btn-primary {
+            background: linear-gradient(135deg, #0284C7, #0369A1);
+            border-color: #0284C7;
+            color: #FFFFFF;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+        }
+
+        .action-btn-primary:hover {
+            background: linear-gradient(135deg, #0369A1, #075985);
+            color: #FFFFFF;
+        }
+
+        /* 隐藏的原生文件上传 input */
+        #excel-file-input {
+            display: none;
+        }
+
+        /* 主体布局 */
+        .dashboard-container {
+            max-width: 1680px;
+            margin: 18px auto 0;
+            padding: 0 28px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 图表专用 Tab 切换栏 */
+        .chart-tabs-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .chart-tab-btn {
+            background: #F1F5F9;
+            border: 1px solid #E2E8F0;
+            color: #475569;
+            font-size: 0.75rem;
+            padding: 4px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: var(--font-main);
+        }
+
+        .chart-tab-btn:hover {
+            color: #0284C7;
+            border-color: #BAE6FD;
+            background: #F0F9FF;
+        }
+
+        .chart-tab-btn.active {
+            background: rgba(2, 132, 199, 0.1);
+            border-color: var(--primary);
+            color: #0284C7;
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(2, 132, 199, 0.15);
+        }
+
+        /* 图表容器 */
+        .chart-grid-two {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .chart-grid-three {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        @media (max-width: 1400px) {
+            .chart-grid-three {
+                grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            }
+        }
+
+        @media (max-width: 900px) {
+
+            .chart-grid-two,
+            .chart-grid-three {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .chart-box {
+            background: #FFFFFF;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+        }
+
+        .chart-box-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #F1F5F9;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .chart-box-title {
+            font-size: 1.02rem;
+            font-weight: 700;
+            color: #0F172A;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-box-title::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: var(--box-accent, var(--primary));
+            border-radius: 2px;
+        }
+
+        .chart-box-subtitle {
+            font-size: 0.76rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .chart-canvas {
+            width: 100%;
+            height: 380px;
+        }
+
+        .chart-canvas-wide {
+            height: 400px;
+        }
+
+        /* 按产品分类的明细表格群 */
+        .grouped-tables-container {
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+        }
+
+        /* 核心统一台账模块与胶囊切换控件 */
+        .unified-table-box {
+            margin-top: 24px;
+            background: #FFFFFF;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 22px 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+            border-top: 3px solid var(--box-accent, var(--primary));
+        }
+
+        .table-controls-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-top: 14px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid #F1F5F9;
+        }
+
+        .capsule-pills-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .capsule-pill-btn {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            color: #475569;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 6px 14px;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            user-select: none;
+            font-family: var(--font-main);
+        }
+
+        .capsule-pill-btn:hover {
+            color: #0284C7;
+            border-color: #BAE6FD;
+            background: #F0F9FF;
+            transform: translateY(-1px);
+        }
+
+        .capsule-pill-btn.active {
+            background: #0284C7;
+            border-color: #0284C7;
+            color: #FFFFFF;
+            box-shadow: 0 2px 10px rgba(2, 132, 199, 0.3);
+        }
+
+        .capsule-pill-count {
+            background: rgba(0, 0, 0, 0.06);
+            color: #64748B;
+            font-size: 0.72rem;
+            padding: 1px 7px;
+            border-radius: 9999px;
+            font-family: var(--font-mono);
+            font-weight: 700;
+        }
+
+        .capsule-pill-btn.active .capsule-pill-count {
+            background: rgba(255, 255, 255, 0.25);
+            color: #FFFFFF;
+        }
+
+        .table-filter-tools {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .filter-select-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            color: #64748B;
+            font-weight: 500;
+        }
+
+        .filter-select-wrap select {
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 0.78rem;
+            background: #FFFFFF;
+            color: #1E293B;
+            outline: none;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .filter-select-wrap select:focus {
+            border-color: #0284C7;
+        }
+
+        .table-search-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #FFFFFF;
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
+            padding: 5px 10px;
+            transition: border-color 0.2s;
+        }
+
+        .table-search-wrap:focus-within {
+            border-color: #0284C7;
+            box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+        }
+
+        .table-search-wrap input {
+            border: none;
+            outline: none;
+            font-size: 0.78rem;
+            color: #0F172A;
+            width: 160px;
+            background: transparent;
+        }
+
+        .table-footer-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid #F1F5F9;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-badge-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.72rem;
+            font-weight: 600;
+        }
+
+        .badge-dealt {
+            background: #ECFDF5;
+            color: #059669;
+            border: 1px solid #A7F3D0;
+        }
+
+        .badge-unsold {
+            background: #FEF2F2;
+            color: #DC2626;
+            border: 1px solid #FECACA;
+        }
+
+        .badge-pending {
+            background: #EFF6FF;
+            color: #2563EB;
+            border: 1px solid #BFDBFE;
+        }
+
+        .product-table-card {
+            background: #FFFFFF;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            border-top: 3px solid var(--card-accent, var(--primary));
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+        }
+
+        .product-table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #F1F5F9;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .product-title-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .product-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .product-subtext {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .product-subtext strong {
+            color: var(--text-primary);
+        }
+
+        .product-header-stats {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .stat-pill {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+        }
+
+        .stat-pill strong {
+            color: #0F172A;
+        }
+
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .auction-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+            text-align: left;
+        }
+
+        .auction-table th {
+            background: #F8FAFC;
+            color: #475569;
+            font-weight: 600;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .auction-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #F1F5F9;
+            color: #1E293B;
+            white-space: nowrap;
+        }
+
+        .auction-table tr:hover td {
+            background: rgba(2, 132, 199, 0.03);
+        }
+
+        .tag-product {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .tag-zhujiao {
+            background: rgba(2, 132, 199, 0.1);
+            color: #0284C7;
+        }
+
+        .tag-zhonghui {
+            background: rgba(217, 119, 6, 0.1);
+            color: #B45309;
+        }
+
+        .tag-banruan {
+            background: rgba(5, 150, 105, 0.1);
+            color: #047857;
+        }
+
+        .tag-onethird {
+            background: rgba(124, 58, 237, 0.1);
+            color: #7C3AED;
+        }
+
+        /* 页面左下方横向悬浮流光岛：深色系极客微光胶囊形态（醒目、高对比度、质感高级） */
+        .floating-today-dock {
+            position: fixed;
+            bottom: 24px;
+            left: 28px;
+            z-index: 1050;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            border-radius: 9999px;
+            padding: 7px 12px 7px 16px;
+            box-shadow: 0 12px 36px -4px rgba(0, 0, 0, 0.45), 0 0 20px -2px rgba(2, 132, 199, 0.35);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            user-select: none;
+            max-width: calc(100vw - 48px);
+        }
+
+        .floating-today-dock:hover {
+            box-shadow: 0 16px 44px -4px rgba(0, 0, 0, 0.55), 0 0 28px 0px rgba(2, 132, 199, 0.5);
+            border-color: rgba(56, 189, 248, 0.7);
+        }
+
+        .dock-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .dock-title {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #F8FAFC;
+            white-space: nowrap;
+            letter-spacing: 0.2px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .dock-date-badge {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            color: #38BDF8;
+            background: rgba(56, 189, 248, 0.16);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+
+        .dock-tags {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            transition: all 0.25s ease;
+            flex-wrap: nowrap;
+        }
+
+        .today-prod-badge-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            user-select: none;
+            white-space: nowrap;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .today-prod-badge-chip:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.2);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+        }
+
+        /* 深色系微光徽章高对比配色 */
+        .today-prod-badge-chip.tag-zhujiao {
+            background: rgba(2, 132, 199, 0.25);
+            color: #38BDF8;
+            border-color: rgba(56, 189, 248, 0.35);
+        }
+
+        .today-prod-badge-chip.tag-zhonghui {
+            background: rgba(217, 119, 6, 0.25);
+            color: #FBBF24;
+            border-color: rgba(251, 191, 36, 0.35);
+        }
+
+        .today-prod-badge-chip.tag-banruan {
+            background: rgba(5, 150, 105, 0.25);
+            color: #34D399;
+            border-color: rgba(52, 211, 153, 0.35);
+        }
+
+        .today-prod-badge-chip.tag-onethird {
+            background: rgba(124, 58, 237, 0.25);
+            color: #C084FC;
+            border-color: rgba(192, 132, 252, 0.35);
+        }
+
+        .today-prod-badge-chip .chip-meta {
+            opacity: 0.95;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 700;
+            background: rgba(0, 0, 0, 0.45);
+            color: #E2E8F0;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: 2px;
+        }
+
+        .dock-toggle-btn {
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            color: #CBD5E1;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-left: 2px;
+            flex-shrink: 0;
+        }
+
+        .dock-toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+            color: #FFFFFF;
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: scale(1.08);
+        }
+
+        /* 悬浮窗折叠收起状态 */
+        .floating-today-dock.collapsed {
+            padding: 6px 14px;
+            width: auto;
+        }
+
+        .floating-today-dock.collapsed .dock-tags {
+            display: none;
+        }
+
+        .floating-today-dock.collapsed .dock-toggle-btn svg {
+            transform: rotate(180deg);
+        }
+
+        .live-pulse-dot-sm {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10B981;
+            box-shadow: 0 0 8px #10B981;
+            animation: pulseMini 2s infinite;
+        }
+
+        @keyframes pulseMini {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            }
+
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+            }
+
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            }
+        }
+
+        .tag-rate {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            color: #E11D48;
+            background: rgba(225, 29, 72, 0.08);
+            padding: 2px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        /* 今日拍卖专属卡片样式 */
+        .today-auction-box {
+            background: #FFFFFF;
+            border: 1px solid #BAE6FD;
+            box-shadow: 0 4px 16px -2px rgba(2, 132, 199, 0.08), 0 2px 6px -1px rgba(2, 132, 199, 0.04);
+            position: relative;
+        }
+
+        .today-auction-box::before {
+            background: linear-gradient(90deg, #0284C7, #38BDF8, #0D9488);
+            height: 3px;
+        }
+
+        /* 呼吸微光呼吸灯点 */
+        .live-pulse-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #0284C7;
+            display: inline-block;
+            box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.7);
+            animation: live-pulse-anim 1.8s infinite;
+        }
+
+        @keyframes live-pulse-anim {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.7);
+            }
+
+            70% {
+                transform: scale(1.1);
+                box-shadow: 0 0 0 7px rgba(2, 132, 199, 0);
+            }
+
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(2, 132, 199, 0);
+            }
+        }
+
+        .today-date-badge {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #0369A1;
+            background: #E0F2FE;
+            border: 1px solid #BAE6FD;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-family: var(--font-mono);
+        }
+
+        .today-stat-chips {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .stat-chip {
+            font-size: 0.75rem;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            padding: 4px 10px;
+            border-radius: 6px;
+            color: #475569;
+            font-family: var(--font-mono);
+        }
+
+        .stat-chip strong {
+            font-weight: 700;
+        }
+
+        /* 今日表格特定微调 */
+        .today-table th {
+            background: #F0F9FF;
+            color: #0369A1;
+            border-bottom: 2px solid #BAE6FD;
+            font-weight: 700;
+        }
+
+        .today-table td {
+            vertical-align: middle;
+            padding: 13px 16px;
+        }
+
+        /* 竞价中/未成交状态标签 */
+        .status-pill-pending {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #FEF3C7;
+            border: 1px solid #FCD34D;
+            color: #B45309;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 9999px;
+        }
+
+        .status-pill-pending .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #F59E0B;
+            animation: live-pulse-anim 1.4s infinite;
+        }
+
+        /* 流拍状态标签 (无参与竞拍买家) */
+        .status-pill-unsold {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #F1F5F9;
+            border: 1px solid #CBD5E1;
+            color: #475569;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 9999px;
+        }
+
+        .status-pill-unsold .dot-unsold {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #EF4444;
+        }
+
+        /* 历史增长率胶囊 */
+        .growth-badge {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .growth-badge-val {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+            width: fit-content;
+        }
+
+        .growth-badge-up .growth-badge-val {
+            background: #FEF2F2;
+            color: #DC2626;
+            border: 1px solid #FECACA;
+        }
+
+        .growth-badge-flat .growth-badge-val {
+            background: #F1F5F9;
+            color: #475569;
+            border: 1px solid #E2E8F0;
+        }
+
+        .growth-badge-down .growth-badge-val {
+            background: #ECFDF5;
+            color: #059669;
+            border: 1px solid #A7F3D0;
+        }
+
+        .hist-subdetail {
+            font-size: 0.72rem;
+            color: #64748B;
+            font-family: var(--font-mono);
+            line-height: 1.2;
+        }
+
+        .today-footer-note {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            color: #475569;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 顶部标题栏 -->
+    <header class="exec-header">
+        <div class="header-inner">
+            <div class="brand-lockup">
+                <div class="brand-icon-box" title="蒙古国煤炭拍卖 (Coal Auction)">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- 焦煤矿块 (多面体立体切面) -->
+                        <polygon points="3,17 7,12 13,13 15,18 10,21 4,20" fill="#1E293B" stroke="#0F172A"
+                            stroke-width="1" stroke-linejoin="round" />
+                        <polygon points="3,17 7,12 9,16 4,20" fill="#334155" opacity="0.9" />
+                        <polygon points="7,12 13,13 9,16" fill="#475569" opacity="0.6" />
+                        <polygon points="9,16 13,13 15,18 10,21" fill="#0F172A" opacity="0.95" />
+                        <line x1="9" y1="16" x2="4" y2="20" stroke="#64748B" stroke-width="0.8" />
+                        <line x1="9" y1="16" x2="10" y2="21" stroke="#475569" stroke-width="0.8" />
+                        <!-- 拍卖槌 (倾斜敲击成交姿态) -->
+                        <line x1="12" y1="10" x2="20.5" y2="1.5" stroke="#92400E" stroke-width="2.2"
+                            stroke-linecap="round" />
+                        <line x1="13" y1="9" x2="19.5" y2="2.5" stroke="#D97706" stroke-width="1.2"
+                            stroke-linecap="round" />
+                        <!-- 槌头 -->
+                        <g transform="translate(10.5, 7.5) rotate(45)">
+                            <rect x="-3" y="-5.5" width="6" height="11" rx="1.5" fill="#D97706" stroke="#78350F"
+                                stroke-width="1" />
+                            <line x1="-3" y1="0" x2="3" y2="0" stroke="#FDE68A" stroke-width="1.2" />
+                            <rect x="-2" y="-4.5" width="1" height="9" rx="0.5" fill="#FBBF24" opacity="0.7" />
+                        </g>
+                        <!-- 竞价成交星芒 -->
+                        <circle cx="6.5" cy="8.5" r="1" fill="#F59E0B" />
+                        <path d="M5 6.5L6 7.5M8 6L7.5 7" stroke="#F59E0B" stroke-width="1.2" stroke-linecap="round" />
+                    </svg>
+                </div>
+                <div class="brand-meta">
+                    <h1>
+                        <span>Mongolian Coal Auction Data Dashboard</span>
+                        <span id="sync-status" class="sync-badge">正在连接 Excel...</span>
+                    </h1>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <!-- 隐藏的 input[type=file] -->
+                <input type="file" id="excel-file-input" accept=".xlsx, .xls" onchange="handleManualFileSelect(event)">
+                <input type="file" id="json-file-input" accept=".json" onchange="handleManualJsonSelect(event)"
+                    style="display: none;">
+
+                <button class="action-btn action-btn-primary" onclick="exportExcelReport()"
+                    title="从当前 SQLite 内存数据一键导出 Excel 报表">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>导出 Excel</span>
+                </button>
+
+                <button class="action-btn" onclick="exportReportImage()" title="保存当前看板长图">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    <span>保存长图</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 悬浮流光岛：常驻横向展示当日拍卖煤种（向下翻页时始终可见，轻巧胶囊形态，支持一键折叠） -->
+    <div class="floating-today-dock" id="floating-today-dock">
+        <div class="dock-title-wrap" onclick="scrollToTodayProduct()" title="点击平滑定位至今日拍卖清单">
+            <span class="live-pulse-dot-sm"></span>
+            <span class="dock-title">当日拍卖煤种</span>
+            <span class="dock-date-badge" id="dock-date-badge">09-11</span>
+        </div>
+        <div class="dock-tags" id="dock-today-tags">
+            <span style="color: #94A3B8; font-size: 0.75rem;">正在同步中...</span>
+        </div>
+        <button class="dock-toggle-btn" id="dock-toggle-btn" onclick="toggleDockCollapse(event)" title="收起/展开悬浮窗">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+        </button>
+    </div>
+
+    <!-- 主仪表板 -->
+    <main class="dashboard-container" id="capture-dashboard">
+
+        <!-- 顶部核心面板：今日拍卖即时清单与历史增幅比对 -->
+        <section class="chart-box today-auction-box" id="today-auction-section" style="--box-accent: #0284C7;">
+            <div class="chart-box-header">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="live-pulse-dot"></span>
+                        <div class="chart-box-title" id="today-board-title">今日拍卖清单 · 核心指标与卖方历史增幅看板</div>
+                        <span class="today-date-badge" id="today-board-date-badge">2026-09-07</span>
+                    </div>
+                    <div class="chart-box-subtitle" id="today-board-subtitle">Today's Live Auction Schedule: Core
+                        Quantities, Floor vs Deal Prices & Historical Growth by Seller & Product</div>
+                </div>
+                <!-- 顶部今日核心概览指标 -->
+                <div class="today-stat-chips" id="today-stat-chips">
+                    <span class="stat-chip">今日场次: <strong id="today-stat-count">-</strong> 场</span>
+                    <span class="stat-chip">挂牌总量: <strong id="today-stat-tonnage" style="color: #0284C7;">-</strong>
+                        万吨</span>
+                    <span class="stat-chip">涉及煤种: <strong id="today-stat-products">-</strong> 类</span>
+                    <span class="stat-chip">拍卖机构: <strong id="today-stat-sellers">-</strong> 家</span>
+                </div>
+            </div>
+
+            <!-- 今日拍卖清单表格 -->
+            <div class="table-responsive" style="margin-top: 6px;">
+                <table class="auction-table today-table" id="today-auction-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 45px;">序号</th>
+                            <th style="min-width: 140px;">拍卖时间</th>
+                            <th style="min-width: 120px;">产品类型</th>
+                            <th style="min-width: 170px;">卖方机构</th>
+                            <th style="min-width: 130px;">挂牌数量</th>
+                            <th style="min-width: 110px;">买牌最低价</th>
+                            <th style="min-width: 120px;">成交价格每吨</th>
+                            <th style="min-width: 95px;">溢价率</th>
+                            <th style="min-width: 200px;">同卖方同产品历史底价增幅</th>
+                            <th style="min-width: 180px;">历史成交价对比 / 状态</th>
+                        </tr>
+                    </thead>
+                    <tbody id="today-auction-tbody">
+                        <tr>
+                            <td colspan="10" style="text-align: center; color: #94A3B8; padding: 24px;">数据载入中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 核心图表行 1：分煤种竞价走势 Tab 切换视图 -->
+        <section class="chart-box" id="price-trend-section" style="--box-accent: #F59E0B;">
+            <div class="chart-box-header">
+                <div>
+                    <div class="chart-box-title" id="price-trend-title">中挥发份性焦煤 (USD) · 拍卖走势</div>
+                    <div class="chart-box-subtitle" id="price-trend-subtitle">Mid-volatile Coking Coal (USD): Floor
+                        Price, Final Price ($/t) & Premium Rate (%)</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <!-- 煤种切换 Tab 按钮组 -->
+                    <div class="chart-tabs-bar" id="price-trend-tabs">
+                        <button class="chart-tab-btn active" id="tab-coal-mid"
+                            onclick="switchPriceTrendTab('mid', this)">
+                            <span
+                                style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #F59E0B; margin-right: 4px;"></span>中挥发焦煤
+                            (USD)
+                        </button>
+                        <button class="chart-tab-btn" id="tab-coal-washed"
+                            onclick="switchPriceTrendTab('washed', this)">
+                            <span
+                                style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #0284C7; margin-right: 4px;"></span>洗精主焦煤
+                            (CNY)
+                        </button>
+                        <button class="chart-tab-btn" id="tab-coal-semi" onclick="switchPriceTrendTab('semi', this)">
+                            <span
+                                style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10B981; margin-right: 4px;"></span>洗选半软焦煤
+                            (CNY)
+                        </button>
+                    </div>
+                    <!-- 动态当前煤种核心统计指标 -->
+                    <div id="price-trend-stat-pill"
+                        style="display: flex; align-items: center; gap: 10px; font-size: 0.75rem; font-family: var(--font-mono); background: #F8FAFC; border: 1px solid #E2E8F0; padding: 4px 10px; border-radius: 6px;">
+                        <span>统计计算中...</span>
+                    </div>
+                </div>
+            </div>
+            <!-- 三个独立图表画板，通过 Tab 切换 display -->
+            <div id="chart-mid-coking" class="chart-canvas chart-canvas-wide"></div>
+            <div id="chart-washed-coking" class="chart-canvas chart-canvas-wide" style="display: none;"></div>
+            <div id="chart-semi-soft-coking" class="chart-canvas chart-canvas-wide" style="display: none;"></div>
+        </section>
+
+        <!-- 核心图表行 2：中挥发份焦煤、洗精主焦煤与洗选半软焦煤 拍卖数量走势对比图 -->
+        <section class="chart-box" style="--box-accent: #10B981;">
+            <div class="chart-box-header">
+                <div>
+                    <div class="chart-box-title">中挥发份焦煤 vs 洗精主焦煤 vs 洗选半软焦煤 · 拍卖挂牌数量走势对比</div>
+                    <div class="chart-box-subtitle">Auction Quantity Trends: Mid-volatile vs Washed Primary vs Washed
+                        Semi-soft Coking Coal (万吨)</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <!-- 统计维度与模式切换 -->
+                    <div class="chart-tabs-bar" id="quantity-view-tabs">
+                        <button class="chart-tab-btn active" id="btn-qty-daily"
+                            onclick="switchQuantityView('daily', this)">按日汇总走势</button>
+                        <button class="chart-tab-btn" id="btn-qty-session"
+                            onclick="switchQuantityView('session', this)">按单场批次</button>
+                        <button class="chart-tab-btn" id="btn-qty-stack"
+                            onclick="toggleQuantityStack(this)">堆叠对比模式</button>
+                    </div>
+                    <!-- 动态统计指标 -->
+                    <div id="quantity-stat-summary"
+                        style="display: flex; align-items: center; gap: 10px; font-size: 0.75rem; font-family: var(--font-mono); background: #F8FAFC; border: 1px solid #E2E8F0; padding: 4px 10px; border-radius: 6px;">
+                        <span>统计计算中...</span>
+                    </div>
+                </div>
+            </div>
+            <div id="chart-quantity-trend" class="chart-canvas chart-canvas-wide"></div>
+        </section>
+
+        <!-- 核心图表行 3：全样本横向对比与溢价涨幅全景图 -->
+        <section class="chart-box" style="--box-accent: #F43F5E;">
+            <div class="chart-box-header">
+                <div>
+                    <div class="chart-box-title">各场拍卖价格结构 (起拍底价 + 溢价差额) 与涨幅走势瀑布图</div>
+                    <div class="chart-box-subtitle">Auction Price Structure (Floor Price + Premium Waterfall) & Premium
+                        Rate (%)</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <!-- 产品类型与币种筛选 Tab -->
+                    <div class="chart-tabs-bar" id="rates-chart-tabs">
+                        <button class="chart-tab-btn active" onclick="switchAllRatesTab('all', this)">全部产品与币种</button>
+                    </div>
+                    <div id="chart-time-range-tag"
+                        style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted);">
+                        统计区间: 自动解析中...
+                    </div>
+                </div>
+            </div>
+            <div id="chart-all-rates" class="chart-canvas chart-canvas-wide"></div>
+        </section>
+
+        <!-- 核心台账模块：全量拍卖明细数据与供货条款 (合并多表格为一体，支持胶囊按钮与快捷筛选切换) -->
+        <section class="unified-table-box" id="unified-table-section" style="--box-accent: #0284C7;">
+            <div class="chart-box-header" style="align-items: flex-start; gap: 16px;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <div class="chart-box-title">蒙古煤炭竞拍台账与交割履约明细</div>
+                        <span class="product-badge tag-zhujiao" id="table-active-badge"
+                            style="font-size: 0.76rem; padding: 2px 10px;">全部煤种</span>
+                    </div>
+                </div>
+
+                <!-- 汇总概览指标小胶囊 -->
+                <div class="product-header-stats" id="table-summary-stats">
+                    <div class="stat-pill">筛选场次: <strong id="stat-table-count">0</strong> 场</div>
+                    <div class="stat-pill">挂牌总量: <strong id="stat-table-tons" style="color: #0284C7;">0</strong> 万吨
+                    </div>
+                    <div class="stat-pill">最高成交: <strong id="stat-table-maxdeal">-</strong></div>
+                    <div class="stat-pill">平均溢价: <strong id="stat-table-avgrate" style="color: #E11D48;">-</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 控制栏：产品胶囊切换按钮组 -->
+            <div class="table-controls-bar">
+                <!-- 产品胶囊按钮组 -->
+                <div class="capsule-pills-wrap" id="table-product-capsules">
+                    <!-- 动态生成胶囊按钮 -->
+                </div>
+            </div>
+
+            <!-- 合并后的统一明细表格 -->
+            <div class="table-responsive" style="margin-top: 14px;">
+                <table class="auction-table unified-auction-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 45px; text-align: center;">序号</th>
+                            <th style="min-width: 120px;">煤种分类</th>
+                            <th style="min-width: 180px;">卖方机构</th>
+                            <th style="min-width: 135px;">拍卖日期时间</th>
+                            <th style="min-width: 130px;">挂牌批次/数量</th>
+                            <th style="min-width: 105px;">起拍底价</th>
+                            <th style="min-width: 110px;">成交价/吨</th>
+                            <th style="min-width: 95px;">每吨溢价</th>
+                            <th style="min-width: 90px;">溢价率</th>
+                            <th style="min-width: 100px;">运输方式</th>
+                            <th style="min-width: 180px;">供货履约时间</th>
+                            <th style="min-width: 220px;">交付监管地点</th>
+                        </tr>
+                    </thead>
+                    <tbody id="unified-auction-tbody">
+                        <!-- 动态渲染数据行 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 表格底栏指示与导出操作 -->
+            <div class="table-footer-bar">
+                <span id="table-row-count-hint"
+                    style="font-size: 0.78rem; color: #64748B; font-family: var(--font-mono);">
+                    显示 0 笔竞拍记录
+                </span>
+                <button class="action-btn" onclick="exportFilteredTableExcel()"
+                    style="padding: 4px 12px; font-size: 0.78rem;" title="仅导出当前筛选结果">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>导出当前筛选结果</span>
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- 图表与动态 Excel 解析脚本 -->
+    <script>
+        // 全局状态
+        let currentRecords = [];
+        let todayAuctionJsonData = null; // 存储从 daily_auction_merged.json 载入的今日拍卖数据
+        let charts = {};
+        let currentFilter = 'all';
+        let currentRatesTab = 'all';
+        let currentPriceTrendTab = 'mid'; // 'mid' | 'washed' | 'semi'
+        let quantityViewMode = 'daily'; // 'daily' | 'session'
+        let quantityIsStacked = false;
+
+        // 页面初始化：优先直接从 SQLite 导出的全局数据源 (auction_data.js) 直连载入，零延迟且无跨域限制
+        window.addEventListener('DOMContentLoaded', () => {
+            initChartInstances();
+
+            // 1. 优先直连本地 SQLite 导出的全局数据源 window.COAL_AUCTION_DATA (免 CORS 拦截、秒级直读)
+            if (window.COAL_AUCTION_DATA && Array.isArray(window.COAL_AUCTION_DATA.records) && window.COAL_AUCTION_DATA.records.length > 0) {
+                if (window.COAL_AUCTION_DATA.today) {
+                    todayAuctionJsonData = window.COAL_AUCTION_DATA.today;
+                }
+                loadRecordsFromRawObjects(window.COAL_AUCTION_DATA.records, `SQLite 数据库直连 (${window.COAL_AUCTION_DATA.update_time || '最新'})`);
+            } else {
+                // 降级兜底：尝试从本地缓存或 Excel 恢复
+                const hasRestored = restoreFromLocalStorage();
+                loadDailyAuctionJson();
+                refreshFromExcel(!hasRestored);
+            }
+
+            // 仍然保留拖拽更新功能作为备用
+            setupDragAndDrop();
+
+            window.addEventListener('resize', () => {
+                Object.values(charts).forEach(c => c && c.resize());
+            });
+        });
+
+        function initChartInstances() {
+            charts.midCoking = echarts.init(document.getElementById('chart-mid-coking'));
+            charts.washedCoking = echarts.init(document.getElementById('chart-washed-coking'));
+            const semiSoftEl = document.getElementById('chart-semi-soft-coking');
+            if (semiSoftEl) charts.semiSoftCoking = echarts.init(semiSoftEl);
+            charts.allRates = echarts.init(document.getElementById('chart-all-rates'));
+
+            const qtyEl = document.getElementById('chart-quantity-trend');
+            if (qtyEl) charts.quantityTrend = echarts.init(qtyEl);
+        }
+
+        // ==========================================
+        // 本地缓存持久化机制（彻底解决页面刷新数据丢失问题）
+        // ==========================================
+        const STORAGE_KEY_RECORDS = 'mongolia_coal_auction_records_v1';
+        const STORAGE_KEY_TODAY_JSON = 'mongolia_coal_auction_today_json_v1';
+        const STORAGE_KEY_SOURCE = 'mongolia_coal_auction_source_v1';
+        const STORAGE_KEY_TIME = 'mongolia_coal_auction_time_v1';
+
+        function restoreFromLocalStorage() {
+            try {
+                const cachedTodayStr = localStorage.getItem(STORAGE_KEY_TODAY_JSON);
+                if (cachedTodayStr) {
+                    todayAuctionJsonData = JSON.parse(cachedTodayStr);
+                }
+            } catch (e) {
+                console.warn('恢复今日 JSON 缓存失败:', e);
+            }
+
+            try {
+                const cachedStr = localStorage.getItem(STORAGE_KEY_RECORDS);
+                const source = localStorage.getItem(STORAGE_KEY_SOURCE) || '本地持久缓存';
+                if (cachedStr) {
+                    const parsed = JSON.parse(cachedStr);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        // 自动校正修复：重新校准有效成交记录的溢价率，彻底解决历史缓存中 rate 均为 0 的问题
+                        currentRecords = parsed.map(r => {
+                            if (r.hasDealt && !r.isUnsold && typeof r.dealPrice === 'number' && typeof r.floorPrice === 'number' && r.floorPrice > 0) {
+                                const accurateRate = Math.round(((r.dealPrice - r.floorPrice) / r.floorPrice) * 1000) / 10;
+                                r.rate = accurateRate;
+                                r.rateStr = accurateRate === 0 ? '0%' : (accurateRate > 0 ? `+${accurateRate}%` : `${accurateRate}%`);
+                                r.diff = (r.dealPrice - r.floorPrice).toFixed(1);
+                            }
+                            return r;
+                        });
+                        saveToLocalStorage(source);
+                        renderAll(`${source} (刷新自动恢复)`);
+                        return true;
+                    }
+                }
+            } catch (e) {
+                console.warn('从 localStorage 恢复缓存数据失败:', e);
+            }
+            return false;
+        }
+
+        // 异步获取 data/daily_auction_merged.json
+        async function loadDailyAuctionJson() {
+            const fetchUrl = `./data/daily_auction_merged.json?_t=${Date.now()}`;
+            try {
+                const response = await fetch(fetchUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP 状态码 ${response.status}`);
+                }
+                const data = await response.json();
+                if (data && Array.isArray(data['数据清单'])) {
+                    todayAuctionJsonData = data;
+                    try {
+                        localStorage.setItem(STORAGE_KEY_TODAY_JSON, JSON.stringify(data));
+                    } catch (e) { }
+                    console.log('成功读取今日拍卖 JSON 数据:', data);
+                    renderTodayAuctionsTable(currentRecords);
+                }
+            } catch (err) {
+                console.warn('自动获取 daily_auction_merged.json 失败 (提示: 若通过 file:// 协议打开受浏览器限制，可点击【载入今日 JSON】或拖入):', err);
+            }
+        }
+
+        // 强制刷新：清空本地缓存并重新拉取
+        async function forceReloadAll() {
+            const statusBadge = document.getElementById('sync-status');
+
+            // 1. 清理本地缓存
+            localStorage.removeItem(STORAGE_KEY_RECORDS);
+            localStorage.removeItem(STORAGE_KEY_TODAY_JSON);
+            localStorage.removeItem(STORAGE_KEY_SOURCE);
+            localStorage.removeItem(STORAGE_KEY_TIME);
+
+            // 2. 检测浏览器协议
+            if (window.location.protocol === 'file:') {
+                alert('【为什么当前刷新无法自动加载磁盘新数据？】\n\n' +
+                    '原因：当前页面是通过双击以本地文件协议 (file://) 打开的。\n' +
+                    '现代浏览器 (Chrome/Edge/Safari) 出于同源安全机制，严格禁止本地网页通过 JavaScript fetch() 自动读取本地磁盘文件，因此静默请求会被浏览器安全拦截并自动还原旧缓存。\n\n' +
+                    '【推荐解决方案】（任选一种）：\n' +
+                    '方案 1（全自动刷新）：在项目根目录下启动本地 HTTP 服务：\n' +
+                    '  cd mongolian-coal-auction\n' +
+                    '  python3 -m http.server 8089\n' +
+                    '  浏览器访问 http://localhost:8089/mongolia_coal_auction.html，此后页面刷新即自动同步最新数据！\n\n' +
+                    '方案 2（零配置手动）：\n' +
+                    '  直接将 daily_auction_merged.json 拖入网页任意区域，或点击顶部【载入今日 JSON】选取更新。');
+                if (statusBadge) {
+                    statusBadge.className = 'sync-badge sync-warning';
+                    statusBadge.textContent = '⚠️ file:// 协议受限 · 请启动本地服务或直接拖入最新文件';
+                }
+                return;
+            }
+
+            // HTTP 服务环境下直接无视缓存拉取最新文件
+            if (statusBadge) {
+                statusBadge.className = 'sync-badge sync-warning';
+                statusBadge.textContent = '正在强制重载最新 JSON 与 Excel...';
+            }
+
+            try {
+                await Promise.all([
+                    loadDailyAuctionJson(),
+                    refreshFromExcel(true)
+                ]);
+                if (statusBadge) {
+                    statusBadge.className = 'sync-badge';
+                    statusBadge.textContent = '🟢 已完成最新数据强制重载';
+                }
+            } catch (err) {
+                if (statusBadge) {
+                    statusBadge.className = 'sync-badge sync-warning';
+                    statusBadge.textContent = '重载失败: ' + err.message;
+                }
+            }
+        }
+
+        function saveToLocalStorage(sourceDesc) {
+            try {
+                if (Array.isArray(currentRecords) && currentRecords.length > 0) {
+                    localStorage.setItem(STORAGE_KEY_RECORDS, JSON.stringify(currentRecords));
+                    localStorage.setItem(STORAGE_KEY_SOURCE, sourceDesc || '实时同步');
+                    localStorage.setItem(STORAGE_KEY_TIME, new Date().toISOString());
+                }
+            } catch (e) {
+                console.warn('写入 localStorage 缓存失败:', e);
+            }
+        }
+
+        // ==========================================
+        // 核心：从 Excel 文件提取数据
+        // ==========================================
+        async function refreshFromExcel(showLoadingState = false) {
+            const statusBadge = document.getElementById('sync-status');
+            if (showLoadingState && statusBadge) {
+                statusBadge.className = 'sync-badge sync-warning';
+                statusBadge.textContent = '正在读取 Excel...';
+            }
+
+            const excelFileName = 'data/蒙煤拍卖临时记录.xlsx';
+            // 添加防缓存时间戳，防止浏览器 HTTP 缓存导致读取不到最新修改
+            const fetchUrl = `./${excelFileName}?_t=${Date.now()}`;
+
+            try {
+                const response = await fetch(fetchUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP 状态码 ${response.status}`);
+                }
+                const arrayBuffer = await response.arrayBuffer();
+                parseExcelArrayBuffer(arrayBuffer, `已从同目录《${excelFileName}》自动提取`);
+            } catch (err) {
+                console.warn('自动从同目录获取 Excel 失败 (提示: file:// 协议受浏览器安全限制，可直接拖入或选取文件):', err);
+
+                // 若当前已有缓存记录（从 localStorage 恢复），则保持展示且无需覆盖为内置快照
+                if (currentRecords && currentRecords.length > 0) {
+                    if (statusBadge) {
+                        statusBadge.className = 'sync-badge';
+                        statusBadge.textContent = `🟢 本地缓存就绪 (${currentRecords.length} 批次) · 可直接拖入最新 Excel`;
+                    }
+                } else {
+                    if (statusBadge) {
+                        statusBadge.className = 'sync-badge sync-warning';
+                        statusBadge.textContent = '已载入快照 · 可点击顶部【手动选取】';
+                    }
+                    loadFallbackData();
+                }
+            }
+        }
+
+        // 解析二进制流 (拖拽或降级使用)
+        function parseExcelArrayBuffer(buffer, sourceDesc) {
+            try {
+                const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+                let sheetName = workbook.SheetNames.find(s => s.toLowerCase() === 'sheet1') || workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+                if (!rawRows || rawRows.length === 0) {
+                    throw new Error('工作表中未检测到有效数据行');
+                }
+                loadRecordsFromRawObjects(rawRows, sourceDesc);
+            } catch (ex) {
+                console.error('Excel 解析出错:', ex);
+                alert(`解析 Excel 发生错误: ${ex.message}`);
+            }
+        }
+
+        // 通用核心清洗函数：处理原始数据对象列表（无论是来自 SQLite 导出的 JS、还是 Excel 解析）
+        function loadRecordsFromRawObjects(rawRows, sourceDesc) {
+            try {
+                if (!Array.isArray(rawRows) || rawRows.length === 0) {
+                    throw new Error('未检测到有效数据行');
+                }
+
+                // 严格过滤全空行
+                const validRows = rawRows.filter(row => {
+                    const prod = String(row['产品类型'] || row['产品'] || '').trim();
+                    const d = row['日期'];
+                    const floor = row['拍卖最低价'];
+                    return prod !== '' || (d !== undefined && d !== null && d !== '') || (floor !== undefined && floor !== null && floor !== '');
+                });
+
+                if (validRows.length === 0) {
+                    throw new Error('工作表中无有效数据行');
+                }
+
+                // 标准化清洗转换
+                currentRecords = validRows.map((row, idx) => {
+                    const product = String(row['产品类型'] || row['产品'] || '焦煤').trim();
+                    const rawDate = row['日期'];
+                    const dateStr = formatExcelDate(rawDate);
+                    const seller = String(row['卖方'] || '-').trim();
+                    const amount = String(row['数量'] || '-').trim();
+                    const tons = parseQuantityTons(amount);
+                    const wanTons = +(tons / 10000).toFixed(2);
+                    const rawCurrency = String(row['币种'] || 'CNY').trim();
+                    const currency = (rawCurrency.toUpperCase() === 'USD' || rawCurrency === '$') ? 'USD' : 'CNY';
+                    const sym = currency === 'USD' ? '$' : '¥';
+
+                    const floorPrice = parseFloat(row['拍卖最低价']) || 0;
+                    const rawDeal = row['成交价格每吨'];
+
+                    // 区分【已成交】、【流拍】、【待出价/竞价中】
+                    let hasDealt = false;
+                    let isUnsold = false;
+                    let dealPrice = null;
+                    let diff = null;
+                    let rateVal = null;
+                    let rateStr = '⚡ 竞价中';
+
+                    const strDeal = String(rawDeal !== undefined && rawDeal !== null ? rawDeal : '').trim();
+                    const strStatus = String(row['状态'] || '').trim();
+
+                    if (strStatus.includes('流拍') || strDeal.includes('流拍') || strDeal.includes('未提交报价') || strDeal === '0' || strDeal === '0.00') {
+                        isUnsold = true;
+                        hasDealt = false;
+                        dealPrice = 0;
+                        diff = null;
+                        rateVal = null;
+                        rateStr = '🚫 流拍';
+                    } else if (strDeal !== '' && strDeal !== '-' && strDeal.toLowerCase() !== 'null' && strDeal.toLowerCase() !== 'none') {
+                        const numDeal = parseFloat(strDeal.replace(/[^0-9.]/g, ''));
+                        if (!isNaN(numDeal)) {
+                            if (numDeal === 0) {
+                                isUnsold = true;
+                                hasDealt = false;
+                                dealPrice = 0;
+                                diff = null;
+                                rateVal = null;
+                                rateStr = '🚫 流拍';
+                            } else if (numDeal > 0) {
+                                hasDealt = true;
+                                isUnsold = false;
+                                dealPrice = numDeal;
+                                diff = (dealPrice - floorPrice).toFixed(1);
+
+                                if (floorPrice > 0 && typeof dealPrice === 'number' && dealPrice > 0) {
+                                    rateVal = Math.round(((dealPrice - floorPrice) / floorPrice) * 1000) / 10;
+                                } else {
+                                    const rawRate = row['涨幅走势'];
+                                    if (typeof rawRate === 'number' && rawRate > 0) {
+                                        rateVal = rawRate <= 1.0 ? Math.round(rawRate * 1000) / 10 : rawRate;
+                                    } else if (typeof rawRate === 'string' && !rawRate.startsWith('=')) {
+                                        rateVal = parseFloat(rawRate.replace('%', '')) || 0;
+                                    }
+                                }
+                                rateStr = rateVal !== null ? (rateVal === 0 ? '0%' : (rateVal > 0 ? `+${rateVal}%` : `${rateVal}%`)) : '+0.0%';
+                            }
+                        }
+                    }
+
+                    return {
+                        id: idx + 1,
+                        product: product,
+                        seller: seller,
+                        date: dateStr,
+                        amount: amount,
+                        tons: tons,
+                        wanTons: wanTons,
+                        rawCurrency: rawCurrency,
+                        currency: currency,
+                        currencySym: sym,
+                        floorPrice: floorPrice,
+                        dealPrice: dealPrice,
+                        hasDealt: hasDealt,
+                        isUnsold: isUnsold,
+                        diff: diff,
+                        rate: rateVal,
+                        rateStr: rateStr,
+                        deliveryTime: String(row['供货时间'] || '').trim(),
+                        transport: String(row['运输方式'] || '公路运输').trim(),
+                        location: String(row['供货地点'] || '甘其毛都口岸海关监管区').trim().replace('\n', ' ')
+                    };
+                });
+
+                // 同步持久化至本地缓存
+                saveToLocalStorage(sourceDesc);
+
+                // 呈现全景数据
+                renderAll(sourceDesc);
+
+            } catch (ex) {
+                console.error('数据清洗解析出错:', ex);
+                alert(`数据解析发生错误: ${ex.message}`);
+            }
+        }
+
+        // 一键将当前全量竞拍数据导出为 Excel 报表
+        function exportExcelReport() {
+            if (!currentRecords || currentRecords.length === 0) {
+                alert('当前暂无数据可导出');
+                return;
+            }
+            try {
+                const exportRows = currentRecords.map(r => ({
+                    '产品': '煤炭',
+                    '产品类型': r.product,
+                    '卖方': r.seller,
+                    '日期': r.date,
+                    '数量': r.amount,
+                    '币种': r.currency,
+                    '拍卖最低价': r.floorPrice,
+                    '成交价格每吨': r.hasDealt ? r.dealPrice : (r.isUnsold ? 0 : '-'),
+                    '涨幅走势': r.rateStr,
+                    '供货时间': r.deliveryTime || '',
+                    '供货地点': r.location || '',
+                    '运输方式': r.transport || ''
+                }));
+                const ws = XLSX.utils.json_to_sheet(exportRows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+                const dateStr = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(wb, `蒙煤拍卖临时记录_${dateStr}.xlsx`);
+            } catch (err) {
+                console.error('导出 Excel 失败:', err);
+                alert('导出 Excel 失败: ' + err.message);
+            }
+        }
+
+        // 数量与吨数标准化转换提取 (支持 "2 批量/12800吨/", "6.4万吨", "12800" 等)
+        function parseQuantityTons(val) {
+            if (typeof val === 'number') return val;
+            if (!val) return 0;
+            const s = String(val).trim();
+            // 匹配 "万吨"
+            const wanMatch = s.match(/([0-9]+(?:\.[0-9]+)?)\s*万吨/);
+            if (wanMatch) return Math.round(parseFloat(wanMatch[1]) * 10000);
+            // 匹配 "XXXX吨"
+            const tonMatch = s.match(/([0-9]+(?:\.[0-9]+)?)\s*吨/);
+            if (tonMatch) return parseFloat(tonMatch[1]);
+            // 匹配包含斜杠例如 "2 批量/12800吨/"
+            const parts = s.split('/');
+            for (const p of parts) {
+                const numMatch = p.match(/([0-9]+(?:\.[0-9]+)?)/);
+                if (numMatch) {
+                    const n = parseFloat(numMatch[1]);
+                    if (n >= 100) return n;
+                }
+            }
+            // 兜底提取最大数字
+            const nums = s.match(/[0-9]+(?:\.[0-9]+)?/g);
+            if (nums && nums.length) {
+                const parsed = nums.map(Number);
+                return Math.max(...parsed);
+            }
+            return 0;
+        }
+
+        // 日期标准化转换（自动四舍五入至整分钟，彻底消除 Excel 浮点解析导致的 59秒/减1分钟误差）
+        function formatExcelDate(val) {
+            if (!val) return '';
+            let date = null;
+            if (val instanceof Date) {
+                // 四舍五入到整分钟，消除 09:59:59.999 浮点误差
+                date = new Date(Math.round(val.getTime() / 60000) * 60000);
+            } else if (typeof val === 'number') {
+                const ms = (val - 25569) * 86400 * 1000;
+                date = new Date(Math.round(ms / 60000) * 60000);
+            } else if (typeof val === 'string') {
+                const str = val.trim().replace('T', ' ');
+                const parsed = new Date(str.replace(/-/g, '/'));
+                if (!isNaN(parsed.getTime())) {
+                    date = new Date(Math.round(parsed.getTime() / 60000) * 60000);
+                } else {
+                    return str;
+                }
+            }
+            if (date && !isNaN(date.getTime())) {
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                const h = String(date.getHours()).padStart(2, '0');
+                const mi = String(date.getMinutes()).padStart(2, '0');
+                return `${y}-${m}-${d} ${h}:${mi}`;
+            }
+            return String(val).trim().replace('T', ' ');
+        }
+
+        // ==========================================
+        // 渲染页面全量图表与表格
+        // ==========================================
+        function renderAll(sourceDesc) {
+            const now = new Date();
+            const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+            // 更新状态标识
+            const statusBadge = document.getElementById('sync-status');
+            if (statusBadge) {
+                statusBadge.className = 'sync-badge';
+                statusBadge.textContent = `🟢 ${sourceDesc || 'Excel 同步就绪'} (${currentRecords.length} 批次 · ${timeStr})`;
+            }
+
+            // 更新图表 1：中挥发份性焦煤 (USD)
+            updateMidCokingChart();
+
+            // 更新图表 2：洗精主焦煤 (CNY)
+            updateWashedCokingChart();
+
+            // 更新图表 3：洗选半软焦煤 (CNY)
+            updateSemiSoftCokingChart();
+
+            // 切换/刷新当前选中的分煤种拍卖走势 Tab 视图
+            switchPriceTrendTab(currentPriceTrendTab, document.getElementById(`tab-coal-${currentPriceTrendTab}`));
+
+            // 更新图表 4：挂牌数量走势对比图
+            updateQuantityTrendChart();
+
+            // 更新全景涨幅走势图的 Tabs 与图表
+            updateAllRatesTabs();
+            updateAllRatesChart();
+
+            // 渲染顶部今日拍卖清单表格与增幅计算
+            renderTodayAuctionsTable(currentRecords);
+
+            // 渲染统揽全品类台账模块（胶囊切换与多维筛选）
+            initTableControls(currentRecords);
+            renderUnifiedTable();
+        }
+
+        // ==========================================
+        // 0. 今日拍卖清单与历史基准增幅计算与渲染
+        // ==========================================
+        function calcHistoricalBenchmark(targetItem, allRecords) {
+            const targetDate = targetItem.date ? targetItem.date.slice(0, 10) : '';
+            const targetSellerClean = targetItem.seller ? targetItem.seller.replace(/\s+/g, '') : '';
+
+            // 筛选早于当前场次日期的同卖方、同煤种历史记录（严格区分大TT与小TT）
+            const histMatches = allRecords.filter(r => {
+                if (r.id === targetItem.id) return false;
+                const rDate = r.date ? r.date.slice(0, 10) : '';
+                const isEarlier = rDate ? (rDate < targetDate) : false;
+
+                const rSellerClean = r.seller ? r.seller.replace(/\s+/g, '') : '';
+                let isSameSeller = (rSellerClean === targetSellerClean);
+                if (!isSameSeller) {
+                    const aHasErdene = rSellerClean.includes('埃尔登内斯');
+                    const bHasErdene = targetSellerClean.includes('埃尔登内斯');
+                    if (aHasErdene && bHasErdene) isSameSeller = true;
+                    else if (!aHasErdene && !bHasErdene) {
+                        const aHasTT = rSellerClean.includes('塔万陶勒盖');
+                        const bHasTT = targetSellerClean.includes('塔万陶勒盖');
+                        if (aHasTT && bHasTT) isSameSeller = true;
+                    }
+                    const aHasER = rSellerClean.includes('能源资源');
+                    const bHasER = targetSellerClean.includes('能源资源');
+                    if (aHasER && bHasER) isSameSeller = true;
+                }
+
+                const isSameProduct = (r.product === targetItem.product);
+                return isEarlier && isSameSeller && isSameProduct;
+            });
+
+            const histCount = histMatches.length;
+            const floorList = histMatches.map(r => r.floorPrice).filter(p => typeof p === 'number' && p > 0);
+            // 过滤有效成交价：流拍(成交价为0)或未成交不计入历史均价统计
+            const dealList = histMatches.filter(r => r.hasDealt && !r.isUnsold && typeof r.dealPrice === 'number' && r.dealPrice > 0).map(r => r.dealPrice);
+
+            const avgFloor = floorList.length > 0 ? (floorList.reduce((a, b) => a + b, 0) / floorList.length) : null;
+            const avgDeal = dealList.length > 0 ? (dealList.reduce((a, b) => a + b, 0) / dealList.length) : null;
+
+            // 今日底价较该卖方历史底价均值增幅
+            let floorGrowth = null;
+            if (avgFloor !== null && targetItem.floorPrice > 0) {
+                floorGrowth = ((targetItem.floorPrice - avgFloor) / avgFloor) * 100;
+            }
+
+            // 今日成交价较该卖方历史成交均价增幅 (若流拍则不计算成交价增幅)
+            let dealGrowth = null;
+            if (avgDeal !== null && targetItem.hasDealt && !targetItem.isUnsold && targetItem.dealPrice > 0) {
+                dealGrowth = ((targetItem.dealPrice - avgDeal) / avgDeal) * 100;
+            }
+
+            return {
+                histCount,
+                avgFloor,
+                avgDeal,
+                floorGrowth,
+                dealGrowth
+            };
+        }
+
+        function renderTodayAuctionsTable(allRecords) {
+            const tbody = document.getElementById('today-auction-tbody');
+            const dateBadge = document.getElementById('today-board-date-badge');
+            const statCount = document.getElementById('today-stat-count');
+            const statTonnage = document.getElementById('today-stat-tonnage');
+            const statProducts = document.getElementById('today-stat-products');
+            const statSellers = document.getElementById('today-stat-sellers');
+
+            if (!tbody) return;
+
+            let todayItems = [];
+            let targetDateStr = '';
+            let isFromJson = false;
+
+            // 优先从 daily_auction_merged.json 获取今日实时拍卖清单
+            if (todayAuctionJsonData && Array.isArray(todayAuctionJsonData['数据清单']) && todayAuctionJsonData['数据清单'].length > 0) {
+                isFromJson = true;
+                targetDateStr = todayAuctionJsonData['日期'] || '2026-09-11';
+                todayItems = todayAuctionJsonData['数据清单'].map((row, idx) => {
+                    const timeStr = String(row['拍卖时间'] || '').trim();
+                    const fullDate = timeStr ? `${targetDateStr} ${timeStr}` : targetDateStr;
+                    const product = String(row['产品类型'] || row['产品'] || '焦煤').trim();
+                    const seller = String(row['卖方'] || '-').trim();
+                    const amount = String(row['数量'] || '-').trim();
+                    const tons = parseQuantityTons(amount);
+                    const wanTons = +(tons / 10000).toFixed(2);
+
+                    const rawFloor = String(row['拍卖最低价'] || '').trim();
+                    const rawDeal = String(row['成交价格每吨'] || '').trim();
+                    const status = String(row['状态'] || '').trim();
+
+                    // 币种识别
+                    let currency = 'CNY';
+                    let currencySym = '¥';
+                    if (rawFloor.toUpperCase().includes('USD') || rawDeal.toUpperCase().includes('USD') || rawFloor.includes('$') || rawDeal.includes('$')) {
+                        currency = 'USD';
+                        currencySym = '$';
+                    }
+
+                    const floorPrice = parseFloat(rawFloor.replace(/[^0-9.]/g, '')) || 0;
+
+                    let hasDealt = false;
+                    let isUnsold = false;
+                    let dealPrice = null;
+
+                    if (status.includes('流拍') || rawDeal === '0' || rawDeal === '0.00' || rawDeal.includes('流拍') || rawDeal.includes('未提交报价')) {
+                        isUnsold = true;
+                        hasDealt = false;
+                        dealPrice = 0;
+                    } else if (rawDeal !== '' && rawDeal !== '-' && rawDeal.toLowerCase() !== 'null' && rawDeal.toLowerCase() !== 'none') {
+                        const numDeal = parseFloat(rawDeal.replace(/[^0-9.]/g, ''));
+                        if (!isNaN(numDeal) && numDeal > 0) {
+                            hasDealt = true;
+                            isUnsold = false;
+                            dealPrice = numDeal;
+                        }
+                    }
+
+                    let rateStr = String(row['拍卖价格涨幅走势'] || '').trim();
+                    if (!rateStr || rateStr === '-' || rateStr === 'null') {
+                        if (isUnsold) {
+                            rateStr = '流拍';
+                        } else if (hasDealt && dealPrice !== null && floorPrice > 0) {
+                            const r = ((dealPrice - floorPrice) / floorPrice) * 100;
+                            rateStr = r === 0 ? '0%' : (r > 0 ? `+${r.toFixed(1)}%` : `${r.toFixed(1)}%`);
+                        } else if (!hasDealt) {
+                            rateStr = '待出价';
+                        }
+                    }
+
+                    return {
+                        id: `today_json_${idx + 1}`,
+                        date: fullDate,
+                        product: product,
+                        seller: seller,
+                        amount: amount,
+                        tons: tons,
+                        wanTons: wanTons,
+                        currency: currency,
+                        currencySym: currencySym,
+                        floorPrice: floorPrice,
+                        dealPrice: dealPrice,
+                        hasDealt: hasDealt,
+                        isUnsold: isUnsold,
+                        rateStr: rateStr,
+                        detailUrl: row['查看具体信息'] || '',
+                        deliveryTime: row['供货时间'] || '',
+                        deliveryLoc: row['供货地点'] || '',
+                        transport: row['运输方式'] || ''
+                    };
+                });
+            } else if (allRecords && allRecords.length > 0) {
+                // 回退到 Excel 中的最新拍卖日
+                const validRecords = allRecords.filter(r => r && r.date);
+                const allDates = Array.from(new Set(validRecords.map(r => r.date.slice(0, 10)).filter(Boolean))).sort();
+                const now = new Date();
+                const systemToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                targetDateStr = allDates.includes(systemToday) ? systemToday : (allDates.length > 0 ? allDates[allDates.length - 1] : systemToday);
+                todayItems = validRecords.filter(r => r.date && r.date.startsWith(targetDateStr));
+            }
+
+            if (!todayItems || todayItems.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: #94A3B8; padding: 24px;">暂无今日拍卖场次数据</td></tr>`;
+                return;
+            }
+
+            const now = new Date();
+            const systemToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            if (dateBadge) {
+                if (isFromJson) {
+                    dateBadge.textContent = `${targetDateStr} (今日实时 · JSON 同步)`;
+                } else {
+                    const isFallback = (targetDateStr !== systemToday);
+                    dateBadge.textContent = `${targetDateStr} ${isFallback ? '(最新拍卖日 · Excel)' : '(今日实时 · Excel)'}`;
+                }
+            }
+
+            // 今日汇总指标
+            const totalWanTons = todayItems.reduce((acc, cur) => acc + (cur.wanTons || 0), 0);
+            const uniqueProds = new Set(todayItems.map(r => r.product)).size;
+            const uniqueSellers = new Set(todayItems.map(r => r.seller)).size;
+
+            if (statCount) statCount.textContent = todayItems.length;
+            if (statTonnage) statTonnage.textContent = totalWanTons.toFixed(2);
+            if (statProducts) statProducts.textContent = uniqueProds;
+            if (statSellers) statSellers.textContent = uniqueSellers;
+
+            // 同步更新页面顶部吸顶常驻的“今日拍卖煤种”栏
+            updateStickyTodayProducts(todayItems, targetDateStr);
+
+            // 按时间先后排序
+            todayItems.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            // 渲染行
+            tbody.innerHTML = todayItems.map((item, idx) => {
+                const bench = calcHistoricalBenchmark(item, allRecords || []);
+
+                // 产品徽章
+                let prodBadgeClass = 'tag-zhujiao';
+                if (item.product.includes('中挥发')) prodBadgeClass = 'tag-zhonghui';
+                else if (item.product.includes('半软')) prodBadgeClass = 'tag-banruan';
+                else if (item.product.includes('1/3')) prodBadgeClass = 'tag-onethird';
+
+                // 成交价格显示与流拍判断
+                let dealPriceHtml = '';
+                let rateHtml = '';
+                if (item.isUnsold) {
+                    dealPriceHtml = `<span class="status-pill-unsold"><span class="dot-unsold"></span>🚫<span style="font-size: 0.72rem; color: #DC2626; font-weight: 700;">(流拍)</span></span>`;
+                    rateHtml = `<span style="color: #64748B; font-size: 0.76rem; font-weight: 600; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 7px; border-radius: 4px;">流拍</span>`;
+                } else if (item.hasDealt && item.dealPrice !== null) {
+                    dealPriceHtml = `<span style="font-family: var(--font-mono); font-weight: 700; color: #0F172A; font-size: 0.95rem;">${item.currencySym}${item.dealPrice.toLocaleString()}</span>`;
+                    rateHtml = `<span class="tag-rate" style="font-size: 0.82rem;">${item.rateStr}</span>`;
+                } else {
+                    dealPriceHtml = `<span class="status-pill-pending"><span class="dot"></span>⚡ 待出价 / 竞价中</span>`;
+                    rateHtml = `<span style="color: #D97706; font-size: 0.76rem; font-weight: 600; background: #FFFBEB; border: 1px solid #FDE68A; padding: 2px 7px; border-radius: 4px;">待成交</span>`;
+                }
+
+                // 较历史底价增幅
+                let floorGrowthHtml = '';
+                if (bench.floorGrowth !== null) {
+                    const val = bench.floorGrowth;
+                    const sign = val > 0 ? '+' : '';
+                    let styleClass = 'growth-badge-flat';
+                    if (val > 0.05) styleClass = 'growth-badge-up';
+                    else if (val < -0.05) styleClass = 'growth-badge-down';
+
+                    floorGrowthHtml = `
+                        <div class="growth-badge ${styleClass}">
+                            <span class="growth-badge-val">${sign}${val.toFixed(2)}%</span>
+                            <span class="hist-subdetail">历史均底: ${item.currencySym}${bench.avgFloor.toFixed(1)} (${bench.histCount}场)</span>
+                        </div>
+                    `;
+                } else {
+                    floorGrowthHtml = `
+                        <div class="growth-badge growth-badge-flat">
+                            <span class="growth-badge-val" style="font-size: 0.76rem;">基准首场</span>
+                            <span class="hist-subdetail">该卖方此煤种首次挂牌</span>
+                        </div>
+                    `;
+                }
+
+                // 历史成交价对比 / 状态列展示
+                let dealHistHtml = '';
+                if (item.isUnsold) {
+                    dealHistHtml = `
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <span style="color: #DC2626; font-size: 0.78rem; font-weight: 600;">🚫 无买家竞标 · 拍卖流拍</span>
+                            <span class="hist-subdetail">起拍底价 ${item.currencySym}${item.floorPrice}/t 未成交${bench.avgDeal ? ` (历史成交均 ${item.currencySym}${bench.avgDeal.toFixed(1)})` : ''}</span>
+                        </div>
+                    `;
+                } else if (item.hasDealt && bench.dealGrowth !== null) {
+                    const dVal = bench.dealGrowth;
+                    const dSign = dVal > 0 ? '+' : '';
+                    let dStyle = dVal > 0.05 ? 'growth-badge-up' : (dVal < -0.05 ? 'growth-badge-down' : 'growth-badge-flat');
+                    dealHistHtml = `
+                        <div class="growth-badge ${dStyle}">
+                            <span class="growth-badge-val">${dSign}${dVal.toFixed(2)}%</span>
+                            <span class="hist-subdetail">较历史成交均(${item.currencySym}${bench.avgDeal.toFixed(1)})</span>
+                        </div>
+                    `;
+                } else if (item.hasDealt) {
+                    dealHistHtml = `<span style="color: #64748B; font-size: 0.76rem;">已成交 · 历史成交样本不足</span>`;
+                } else {
+                    dealHistHtml = `
+                        <div style="display: flex; flex-direction: column; gap: 2px;">
+                            <span style="color: #B45309; font-size: 0.78rem; font-weight: 500;">⌛ 竞价尚未敲定</span>
+                            <span class="hist-subdetail">${bench.avgDeal ? `参考历史成交均: ${item.currencySym}${bench.avgDeal.toFixed(1)}` : '待出价敲定后核算'}</span>
+                        </div>
+                    `;
+                }
+
+                // 详情链接图标
+                let pdfLinkHtml = '';
+                if (item.detailUrl) {
+                    pdfLinkHtml = `<a href="${item.detailUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; font-size: 0.75rem; color: #0284C7; text-decoration: none;" title="查看通告详情清单 (PDF)">📄</a>`;
+                }
+
+                return `
+                    <tr>
+                        <td style="font-family: var(--font-mono); color: var(--text-muted); font-size: 0.8rem;">${idx + 1}</td>
+                        <td style="font-family: var(--font-mono); font-weight: 600; color: #1E293B;">
+                            ${item.date.slice(5)}
+                        </td>
+                        <td><span class="tag-product ${prodBadgeClass}">${item.product}</span></td>
+                        <td style="color: #0F172A; font-weight: 600;" title="${item.seller}">
+                            ${item.seller}${pdfLinkHtml}
+                        </td>
+                        <td style="font-family: var(--font-mono);">
+                            <strong style="color: #0284C7; font-size: 0.92rem;">${item.wanTons}</strong> <span style="font-size: 0.76rem; color: #64748B;">万吨</span>
+                            <div style="font-size: 0.72rem; color: #94A3B8;">${item.amount}</div>
+                        </td>
+                        <td style="font-family: var(--font-mono); font-weight: 600; color: #334155;">
+                            ${item.currencySym}${item.floorPrice}
+                        </td>
+                        <td>${dealPriceHtml}</td>
+                        <td>${rateHtml}</td>
+                        <td>${floorGrowthHtml}</td>
+                        <td>${dealHistHtml}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 悬浮流光岛：动态更新当日拍卖煤种徽章展示（横向流式胶囊）
+        function updateStickyTodayProducts(todayItems, targetDateStr) {
+            const container = document.getElementById('dock-today-tags');
+            const dateBadge = document.getElementById('dock-date-badge');
+            if (!container) return;
+
+            if (dateBadge && targetDateStr) {
+                dateBadge.textContent = targetDateStr.slice(5);
+            }
+
+            if (!todayItems || todayItems.length === 0) {
+                container.innerHTML = `<span style="color: #94A3B8; font-size: 0.75rem;">当日暂无拍卖场次</span>`;
+                return;
+            }
+
+            // 按煤种汇总：场次与挂牌吨数
+            const prodMap = {};
+            todayItems.forEach(item => {
+                const p = item.product || '焦煤';
+                if (!prodMap[p]) {
+                    prodMap[p] = { count: 0, wanTons: 0, product: p };
+                }
+                prodMap[p].count += 1;
+                prodMap[p].wanTons += (item.wanTons || 0);
+            });
+
+            const prods = Object.values(prodMap);
+            container.innerHTML = prods.map(p => {
+                let badgeClass = 'tag-zhujiao';
+                if (p.product.includes('中挥发')) badgeClass = 'tag-zhonghui';
+                else if (p.product.includes('半软')) badgeClass = 'tag-banruan';
+                else if (p.product.includes('1/3')) badgeClass = 'tag-onethird';
+
+                return `
+                    <span class="today-prod-badge-chip ${badgeClass}" onclick="scrollToTodayProduct('${p.product}')" title="点击平滑定位至【${p.product}】今日拍卖清单">
+                        <span style="width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: inline-block;"></span>
+                        <span>${p.product}</span>
+                        <span class="chip-meta">${p.count}场 · ${p.wanTons.toFixed(2)}万吨</span>
+                    </span>
+                `;
+            }).join('');
+        }
+
+        function toggleDockCollapse(event) {
+            if (event) event.stopPropagation();
+            const dock = document.getElementById('floating-today-dock');
+            if (dock) {
+                dock.classList.toggle('collapsed');
+            }
+        }
+
+        function scrollToTodayProduct(prodName) {
+            const el = document.getElementById('today-auction-section');
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+
+        // ==========================================
+        // 1. 分煤种拍卖走势 Tab 切换与指标药丸逻辑
+        // ==========================================
+        function switchPriceTrendTab(type, btn) {
+            currentPriceTrendTab = type;
+
+            document.querySelectorAll('#price-trend-tabs .chart-tab-btn').forEach(b => b.classList.remove('active'));
+            if (btn) {
+                btn.classList.add('active');
+            } else {
+                const activeBtn = document.getElementById(`tab-coal-${type}`);
+                if (activeBtn) activeBtn.classList.add('active');
+            }
+
+            const tabConfigs = {
+                'mid': {
+                    id: 'chart-mid-coking',
+                    chart: charts.midCoking,
+                    accent: '#F59E0B',
+                    title: '中挥发份性焦煤 (USD) · 拍卖走势',
+                    subtitle: 'Mid-volatile Coking Coal (USD): Floor Price, Final Price ($/t) & Premium Rate (%)'
+                },
+                'washed': {
+                    id: 'chart-washed-coking',
+                    chart: charts.washedCoking,
+                    accent: '#38BDF8',
+                    title: '洗精主焦煤 (CNY / ￥) · 拍卖走势',
+                    subtitle: 'Washed Primary Coking Coal (CNY): Floor Price, Final Price (RMB/t) & Premium Rate (%)'
+                },
+                'semi': {
+                    id: 'chart-semi-soft-coking',
+                    chart: charts.semiSoftCoking,
+                    accent: '#10B981',
+                    title: '洗选半软焦煤 (CNY / ￥) · 拍卖走势',
+                    subtitle: 'Washed Semi-soft Coking Coal (CNY): Floor Price, Final Price (RMB/t) & Premium Rate (%)'
+                }
+            };
+
+            const sectionEl = document.getElementById('price-trend-section');
+            const titleEl = document.getElementById('price-trend-title');
+            const subEl = document.getElementById('price-trend-subtitle');
+
+            Object.keys(tabConfigs).forEach(k => {
+                const dom = document.getElementById(tabConfigs[k].id);
+                if (dom) {
+                    dom.style.display = (k === type) ? 'block' : 'none';
+                }
+            });
+
+            const activeCfg = tabConfigs[type];
+            if (activeCfg) {
+                if (sectionEl) sectionEl.style.setProperty('--box-accent', activeCfg.accent);
+                if (titleEl) titleEl.textContent = activeCfg.title;
+                if (subEl) subEl.textContent = activeCfg.subtitle;
+
+                setTimeout(() => {
+                    if (activeCfg.chart) activeCfg.chart.resize();
+                }, 30);
+            }
+
+            updatePriceTrendStatPill(type);
+        }
+
+        function updatePriceTrendStatPill(type) {
+            const pill = document.getElementById('price-trend-stat-pill');
+            if (!pill || !currentRecords || currentRecords.length === 0) return;
+
+            let filterKeyword = '中挥发';
+            let sym = '$';
+            let accentColor = '#D97706';
+
+            if (type === 'washed') {
+                filterKeyword = '洗精';
+                sym = '¥';
+                accentColor = '#0284C7';
+            } else if (type === 'semi') {
+                filterKeyword = '半软';
+                sym = '¥';
+                accentColor = '#059669';
+            }
+
+            const items = currentRecords.filter(d => d.product.includes(filterKeyword))
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (items.length === 0) {
+                pill.innerHTML = `<span>暂无该煤种拍卖数据</span>`;
+                return;
+            }
+
+            // 有效成交场次 (流拍不计入成交均价和最高成交价)
+            const dealtItems = items.filter(d => d.hasDealt && !d.isUnsold && typeof d.dealPrice === 'number' && d.dealPrice > 0);
+            const unsoldItems = items.filter(d => d.isUnsold);
+            const deals = dealtItems.map(d => d.dealPrice);
+            const floors = items.map(d => d.floorPrice).filter(p => typeof p === 'number' && p > 0);
+            const rates = dealtItems.map(d => d.rate).filter(r => typeof r === 'number');
+
+            const minFloor = floors.length ? Math.min(...floors) : 0;
+            const maxFloor = floors.length ? Math.max(...floors) : 0;
+            const latestFloor = items.length > 0 ? items[items.length - 1].floorPrice : '-';
+            const maxDealStr = deals.length ? `${sym}${Math.max(...deals).toLocaleString()}` : (unsoldItems.length ? '流拍' : '待竞价');
+            const avgRateStr = rates.length ? `+${(rates.reduce((s, v) => s + v, 0) / rates.length).toFixed(1)}%` : (unsoldItems.length ? '流拍' : '待定');
+            const unsoldBadge = unsoldItems.length > 0 ? `<span style="color: #DC2626; background: #FEF2F2; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; margin-left: 2px;">含${unsoldItems.length}场流拍</span>` : '';
+
+            pill.innerHTML = `
+                <span>末次起拍价: <strong style="color: ${accentColor}; font-size: 0.88rem;">${sym}${latestFloor}</strong>/t</span>
+                <span style="color: #CBD5E1;">|</span>
+                <span>底价区间: <strong style="color: #475569;">${sym}${minFloor}${minFloor !== maxFloor ? ` ~ ${sym}${maxFloor}` : ''}</strong></span>
+                <span style="color: #CBD5E1;">|</span>
+                <span>最高成交: <strong style="color: ${accentColor};">${maxDealStr}</strong></span>
+                <span style="color: #CBD5E1;">|</span>
+                <span>平均溢价: <strong style="color: #E11D48;">${avgRateStr}</strong> (${items.length}场${unsoldBadge})</span>
+            `;
+        }
+
+        // 2. 更新中挥发份焦煤图表 (USD)
+        function updateMidCokingChart() {
+            if (!charts.midCoking) {
+                const el = document.getElementById('chart-mid-coking');
+                if (el && typeof echarts !== 'undefined') charts.midCoking = echarts.init(el);
+            }
+            if (!charts.midCoking) return;
+
+            const data = currentRecords
+                .filter(d => d.product.includes('中挥发'))
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const dates = data.map(d => d.date.replace('2026-', ''));
+            const floorPrices = data.map(d => d.floorPrice);
+            const dealPrices = data.map(d => d.hasDealt && !d.isUnsold ? d.dealPrice : '-');
+            const rates = data.map(d => d.hasDealt && !d.isUnsold ? d.rate : '-');
+
+            // 计算最后一次拍卖的起拍价目标线
+            const latestFloorPrice = data.length > 0 ? data[data.length - 1].floorPrice : null;
+
+            const validDeals = data.filter(d => d.hasDealt && !d.isUnsold && typeof d.dealPrice === 'number').map(d => d.dealPrice);
+            let minP = floorPrices.length ? Math.floor(Math.min(...floorPrices) * 0.8) : 100;
+            let maxP = validDeals.length ? Math.ceil(Math.max(...validDeals) * 1.15) : (floorPrices.length ? Math.ceil(Math.max(...floorPrices) * 1.25) : 240);
+            if (latestFloorPrice) {
+                if (latestFloorPrice > maxP) maxP = Math.ceil(latestFloorPrice * 1.08);
+                if (latestFloorPrice < minP) minP = Math.floor(latestFloorPrice * 0.92);
+            }
+
+            const markLineConfig = latestFloorPrice ? {
+                symbol: ['none', 'none'],
+                silent: false,
+                lineStyle: {
+                    type: 'dashed',
+                    width: 2.5,
+                    color: '#EA580C',
+                    dashOffset: 2
+                },
+                label: {
+                    show: true,
+                    position: 'insideEndTop',
+                    formatter: `末次起拍价: $${latestFloorPrice}/t`,
+                    fontSize: 11,
+                    fontWeight: 'bold',
+                    color: '#C2410C',
+                    backgroundColor: 'rgba(255, 247, 237, 0.95)',
+                    borderColor: '#FDBA74',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    padding: [4, 8],
+                    shadowColor: 'rgba(234, 88, 12, 0.15)',
+                    shadowBlur: 4
+                },
+                data: [
+                    {
+                        yAxis: latestFloorPrice,
+                        name: '末次起拍价'
+                    }
+                ]
+            } : null;
+
+            const numRates = rates.filter(r => typeof r === 'number');
+            const maxRate = numRates.length ? Math.max(...numRates) : 30;
+            const yRateMax = Math.max(20, Math.ceil(maxRate / 5) * 5 + 5);
+
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E2E8F0',
+                    textStyle: { color: '#0F172A', fontSize: 12 },
+                    extraCssText: 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border-radius: 8px;',
+                    formatter: function (params) {
+                        const item = data[params[0].dataIndex];
+                        let html = `<strong style="color: #0F172A;">${params[0].axisValue} · ${item ? item.seller : ''}</strong><br/>`;
+                        params.forEach(p => {
+                            if (p.seriesName.includes('最低价')) {
+                                html += `${p.marker} ${p.seriesName}: <strong style="color: #475569;">$${p.value}/t</strong><br/>`;
+                            } else if (p.seriesName.includes('成交价格')) {
+                                if (item && item.isUnsold) {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #DC2626;">🚫 流拍 (无买家出价)</strong><br/>`;
+                                } else if (p.value === '-' || p.value === null || p.value === undefined) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #D97706; font-weight: 600;">⚡ 待出价 / 竞价中</span><br/>`;
+                                } else {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #0F172A;">$${p.value}/t</strong><br/>`;
+                                }
+                            } else if (p.seriesName.includes('涨幅')) {
+                                if (item && item.isUnsold) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #64748B;">流拍</span><br/>`;
+                                } else if (p.value === '-' || p.value === null || p.value === undefined) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #D97706;">待成交</span><br/>`;
+                                } else {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #E11D48;">${p.value === 0 ? '0%' : `+${p.value}%`}</strong><br/>`;
+                                }
+                            }
+                        });
+                        if (latestFloorPrice) {
+                            html += `<span style="color: #EA580C; font-size: 0.76rem;">🎯 目标线 (末次起拍价): $${latestFloorPrice}/t</span>`;
+                        }
+                        return html;
+                    }
+                },
+                legend: {
+                    data: ['买牌最低价 ($/t)', '成交价格 ($/t)', '溢价涨幅走势 (%)'],
+                    textStyle: { color: '#475569', fontSize: 11 },
+                    top: 0
+                },
+                grid: { top: 45, bottom: 30, left: 50, right: 50 },
+                xAxis: {
+                    type: 'category',
+                    data: dates,
+                    axisLine: { lineStyle: { color: '#CBD5E1' } },
+                    axisLabel: { color: '#475569', fontSize: 11 }
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '价格 ($/t)',
+                        min: minP,
+                        max: maxP,
+                        nameTextStyle: { color: '#64748B', fontSize: 11 },
+                        splitLine: { lineStyle: { color: '#F1F5F9' } },
+                        axisLabel: { color: '#64748B', fontSize: 11, formatter: '${value}' }
+                    },
+                    {
+                        type: 'value',
+                        name: '涨幅走势 (%)',
+                        min: 0,
+                        max: yRateMax,
+                        nameTextStyle: { color: '#E11D48', fontSize: 11 },
+                        splitLine: { show: false },
+                        axisLabel: { color: '#E11D48', fontSize: 11, formatter: '{value}%' }
+                    }
+                ],
+                series: [
+                    {
+                        name: '买牌最低价 ($/t)',
+                        type: 'bar',
+                        barWidth: dates.length <= 6 ? 32 : (dates.length <= 10 ? 24 : 18),
+                        barMaxWidth: 40,
+                        itemStyle: { color: '#CBD5E1', borderRadius: [3, 3, 0, 0] },
+                        data: floorPrices,
+                        markLine: markLineConfig
+                    },
+                    {
+                        name: '成交价格 ($/t)',
+                        type: 'bar',
+                        barWidth: dates.length <= 6 ? 32 : (dates.length <= 10 ? 24 : 18),
+                        barMaxWidth: 40,
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#F59E0B' },
+                                { offset: 1, color: '#D97706' }
+                            ]),
+                            borderRadius: [3, 3, 0, 0]
+                        },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#B45309',
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null) ? '⚡待定' : `$${params.value}`
+                        },
+                        data: dealPrices
+                    },
+                    {
+                        name: '溢价涨幅走势 (%)',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 8,
+                        lineStyle: { width: 3, color: '#E11D48' },
+                        itemStyle: { color: '#E11D48', borderWidth: 2, borderColor: '#FFFFFF' },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#E11D48',
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null || params.value === undefined) ? '' : (params.value === 0 ? '0%' : `+${params.value}%`)
+                        },
+                        data: rates
+                    }
+                ]
+            };
+            charts.midCoking.setOption(option);
+        }
+
+        // 3. 更新洗精主焦煤图表 (CNY)
+        function updateWashedCokingChart() {
+            if (!charts.washedCoking) {
+                const el = document.getElementById('chart-washed-coking');
+                if (el && typeof echarts !== 'undefined') charts.washedCoking = echarts.init(el);
+            }
+            if (!charts.washedCoking) return;
+
+            const data = currentRecords
+                .filter(d => d.product.includes('洗精'))
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const dates = data.map(d => d.date.replace('2026-', ''));
+            const floorPrices = data.map(d => d.floorPrice);
+            const dealPrices = data.map(d => d.hasDealt && !d.isUnsold ? d.dealPrice : '-');
+            const rates = data.map(d => d.hasDealt && !d.isUnsold ? d.rate : '-');
+
+            // 计算最后一次拍卖的起拍价目标线
+            const latestFloorPrice = data.length > 0 ? data[data.length - 1].floorPrice : null;
+
+            const validDeals = data.filter(d => d.hasDealt && !d.isUnsold && typeof d.dealPrice === 'number').map(d => d.dealPrice);
+            let minP = floorPrices.length ? Math.floor(Math.min(...floorPrices) * 0.8) : 800;
+            let maxP = validDeals.length ? Math.ceil(Math.max(...validDeals) * 1.15) : (floorPrices.length ? Math.ceil(Math.max(...floorPrices) * 1.25) : 1800);
+            if (latestFloorPrice) {
+                if (latestFloorPrice > maxP) maxP = Math.ceil(latestFloorPrice * 1.08);
+                if (latestFloorPrice < minP) minP = Math.floor(latestFloorPrice * 0.92);
+            }
+
+            const markLineConfig = latestFloorPrice ? {
+                symbol: ['none', 'none'],
+                silent: false,
+                lineStyle: {
+                    type: 'dashed',
+                    width: 2.5,
+                    color: '#0284C7',
+                    dashOffset: 2
+                },
+                label: {
+                    show: true,
+                    position: 'insideEndTop',
+                    formatter: `末次起拍价: ¥${latestFloorPrice}/t`,
+                    fontSize: 11,
+                    fontWeight: 'bold',
+                    color: '#0369A1',
+                    backgroundColor: 'rgba(240, 249, 255, 0.95)',
+                    borderColor: '#BAE6FD',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    padding: [4, 8],
+                    shadowColor: 'rgba(2, 132, 199, 0.15)',
+                    shadowBlur: 4
+                },
+                data: [
+                    {
+                        yAxis: latestFloorPrice,
+                        name: '末次起拍价'
+                    }
+                ]
+            } : null;
+
+            const numRates = rates.filter(r => typeof r === 'number');
+            const maxRate = numRates.length ? Math.max(...numRates) : 30;
+            const yRateMax = Math.max(20, Math.ceil(maxRate / 5) * 5 + 5);
+
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E2E8F0',
+                    textStyle: { color: '#0F172A', fontSize: 12 },
+                    extraCssText: 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border-radius: 8px;',
+                    formatter: function (params) {
+                        const item = data[params[0].dataIndex];
+                        let html = `<strong style="color: #0F172A;">${params[0].axisValue} · ${item ? item.seller : ''}</strong><br/>`;
+                        params.forEach(p => {
+                            if (p.seriesName.includes('最低价')) {
+                                html += `${p.marker} ${p.seriesName}: <strong style="color: #475569;">¥${p.value}/t</strong><br/>`;
+                            } else if (p.seriesName.includes('成交价格')) {
+                                if (item && item.isUnsold) {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #DC2626;">🚫 流拍 (无买家出价)</strong><br/>`;
+                                } else if (p.value === '-' || p.value === null || p.value === undefined) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #D97706; font-weight: 600;">⚡ 待出价 / 竞价中</span><br/>`;
+                                } else {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #0F172A;">¥${p.value}/t</strong><br/>`;
+                                }
+                            } else if (p.seriesName.includes('涨幅')) {
+                                if (item && item.isUnsold) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #64748B;">流拍</span><br/>`;
+                                } else if (p.value === '-' || p.value === null || p.value === undefined) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #D97706;">待成交</span><br/>`;
+                                } else {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #E11D48;">${p.value === 0 ? '0%' : `+${p.value}%`}</strong><br/>`;
+                                }
+                            }
+                        });
+                        if (latestFloorPrice) {
+                            html += `<span style="color: #0284C7; font-size: 0.76rem;">🎯 目标线 (末次起拍价): ¥${latestFloorPrice}/t</span>`;
+                        }
+                        return html;
+                    }
+                },
+                legend: {
+                    data: ['买牌最低价 (元/t)', '成交价格 (元/t)', '溢价涨幅走势 (%)'],
+                    textStyle: { color: '#475569', fontSize: 11 },
+                    top: 0
+                },
+                grid: { top: 45, bottom: 30, left: 55, right: 50 },
+                xAxis: {
+                    type: 'category',
+                    data: dates,
+                    axisLine: { lineStyle: { color: '#CBD5E1' } },
+                    axisLabel: { color: '#475569', fontSize: 11 }
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '价格 (元/t)',
+                        min: minP,
+                        max: maxP,
+                        nameTextStyle: { color: '#64748B', fontSize: 11 },
+                        splitLine: { lineStyle: { color: '#F1F5F9' } },
+                        axisLabel: { color: '#64748B', fontSize: 11, formatter: '¥{value}' }
+                    },
+                    {
+                        type: 'value',
+                        name: '涨幅走势 (%)',
+                        min: 0,
+                        max: yRateMax,
+                        nameTextStyle: { color: '#E11D48', fontSize: 11 },
+                        splitLine: { show: false },
+                        axisLabel: { color: '#E11D48', fontSize: 11, formatter: '{value}%' }
+                    }
+                ],
+                series: [
+                    {
+                        name: '买牌最低价 (元/t)',
+                        type: 'bar',
+                        barWidth: dates.length <= 6 ? 32 : (dates.length <= 10 ? 24 : 18),
+                        barMaxWidth: 40,
+                        itemStyle: { color: '#CBD5E1', borderRadius: [3, 3, 0, 0] },
+                        data: floorPrices,
+                        markLine: markLineConfig
+                    },
+                    {
+                        name: '成交价格 (元/t)',
+                        type: 'bar',
+                        barWidth: dates.length <= 6 ? 32 : (dates.length <= 10 ? 24 : 18),
+                        barMaxWidth: 40,
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#38BDF8' },
+                                { offset: 1, color: '#0284C7' }
+                            ]),
+                            borderRadius: [3, 3, 0, 0]
+                        },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#0369A1',
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null) ? '⚡待定' : `¥${params.value}`
+                        },
+                        data: dealPrices
+                    },
+                    {
+                        name: '溢价涨幅走势 (%)',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 8,
+                        lineStyle: { width: 3, color: '#E11D48' },
+                        itemStyle: { color: '#E11D48', borderWidth: 2, borderColor: '#FFFFFF' },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#E11D48',
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null || params.value === undefined) ? '' : (params.value === 0 ? '0%' : `+${params.value}%`)
+                        },
+                        data: rates
+                    }
+                ]
+            };
+            charts.washedCoking.setOption(option);
+        }
+
+        // 3. 更新洗选半软焦煤图表 (CNY)
+        function updateSemiSoftCokingChart() {
+            if (!charts.semiSoftCoking) {
+                const el = document.getElementById('chart-semi-soft-coking');
+                if (el && typeof echarts !== 'undefined') charts.semiSoftCoking = echarts.init(el);
+            }
+            if (!charts.semiSoftCoking) return;
+
+            const data = currentRecords
+                .filter(d => d.product.includes('半软'))
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            if (data.length === 0) {
+                charts.semiSoftCoking.setOption({
+                    title: {
+                        text: '暂无洗选半软焦煤拍卖数据',
+                        left: 'center',
+                        top: 'middle',
+                        textStyle: { color: '#94A3B8', fontSize: 13, fontWeight: 'normal' }
+                    }
+                }, true);
+                return;
+            }
+
+            const dates = data.map(d => d.date.replace(/^20\d\d-/, ''));
+            const floorPrices = data.map(d => d.floorPrice);
+            const dealPrices = data.map(d => d.hasDealt && !d.isUnsold ? d.dealPrice : '-');
+            const rates = data.map(d => d.hasDealt && !d.isUnsold ? d.rate : '-');
+            const currencySym = data[0]?.currencySym || '¥';
+            const unitName = currencySym === '$' ? '$/t' : '元/t';
+
+            // 计算最后一次拍卖的起拍价目标线
+            const latestFloorPrice = data.length > 0 ? data[data.length - 1].floorPrice : null;
+
+            const validDeals = data.filter(d => d.hasDealt && !d.isUnsold && typeof d.dealPrice === 'number').map(d => d.dealPrice);
+            let minP = floorPrices.length ? Math.floor(Math.min(...floorPrices) * 0.8) : 800;
+            let maxP = validDeals.length ? Math.ceil(Math.max(...validDeals) * 1.15) : (floorPrices.length ? Math.ceil(Math.max(...floorPrices) * 1.25) : 1600);
+            if (latestFloorPrice) {
+                if (latestFloorPrice > maxP) maxP = Math.ceil(latestFloorPrice * 1.08);
+                if (latestFloorPrice < minP) minP = Math.floor(latestFloorPrice * 0.92);
+            }
+
+            const markLineConfig = latestFloorPrice ? {
+                symbol: ['none', 'none'],
+                silent: false,
+                lineStyle: {
+                    type: 'dashed',
+                    width: 2.5,
+                    color: '#059669',
+                    dashOffset: 2
+                },
+                label: {
+                    show: true,
+                    position: 'insideEndTop',
+                    formatter: `末次起拍价: ${currencySym}${latestFloorPrice}/t`,
+                    fontSize: 11,
+                    fontWeight: 'bold',
+                    color: '#232323',
+                    backgroundColor: 'rgba(236, 253, 245, 0.95)',
+                    borderColor: '#A7F3D0',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    padding: [4, 8],
+                    shadowColor: 'rgba(5, 150, 105, 0.15)',
+                    shadowBlur: 4
+                },
+                data: [
+                    {
+                        yAxis: latestFloorPrice,
+                        name: '末次起拍价'
+                    }
+                ]
+            } : null;
+
+            const numRates = rates.filter(r => typeof r === 'number');
+            const maxRate = numRates.length ? Math.max(...numRates) : 30;
+            const yRateMax = Math.max(20, Math.ceil(maxRate / 5) * 5 + 5);
+
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E2E8F0',
+                    textStyle: { color: '#0F172A', fontSize: 12 },
+                    extraCssText: 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border-radius: 8px;',
+                    formatter: function (params) {
+                        const item = data[params[0].dataIndex];
+                        let html = `<strong style="color: #0F172A;">${params[0].axisValue} · ${item ? item.seller : ''}</strong><br/>`;
+                        params.forEach(p => {
+                            if (p.seriesName.includes('最低价')) {
+                                html += `${p.marker} ${p.seriesName}: <strong style="color: #475569;">${currencySym}${p.value}/t</strong><br/>`;
+                            } else if (p.seriesName.includes('成交价格')) {
+                                if (item && item.isUnsold) {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #DC2626;">🚫 流拍 (无买家出价)</strong><br/>`;
+                                } else if (p.value === '-' || p.value === null || p.value === undefined) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #D97706; font-weight: 600;">⚡ 待出价 / 竞价中</span><br/>`;
+                                } else {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #0F172A;">${currencySym}${p.value}/t</strong><br/>`;
+                                }
+                            } else if (p.seriesName.includes('涨幅')) {
+                                if (item && item.isUnsold) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #64748B;">流拍</span><br/>`;
+                                } else if (p.value === '-' || p.value === null || p.value === undefined) {
+                                    html += `${p.marker} ${p.seriesName}: <span style="color: #D97706;">待成交</span><br/>`;
+                                } else {
+                                    html += `${p.marker} ${p.seriesName}: <strong style="color: #E11D48;">${p.value === 0 ? '0%' : `+${p.value}%`}</strong><br/>`;
+                                }
+                            }
+                        });
+                        if (latestFloorPrice) {
+                            html += `<span style="color: #059669; font-size: 0.76rem;">🎯 目标线 (末次起拍价): ${currencySym}${latestFloorPrice}/t</span>`;
+                        }
+                        return html;
+                    }
+                },
+                legend: {
+                    data: [`买牌最低价 (${unitName})`, `成交价格 (${unitName})`, '溢价涨幅走势 (%)'],
+                    textStyle: { color: '#475569', fontSize: 11 },
+                    top: 0
+                },
+                grid: { top: 45, bottom: 30, left: 55, right: 50 },
+                xAxis: {
+                    type: 'category',
+                    data: dates,
+                    axisLine: { lineStyle: { color: '#CBD5E1' } },
+                    axisLabel: { color: '#475569', fontSize: 11 }
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: `价格 (${unitName})`,
+                        min: minP,
+                        max: maxP,
+                        nameTextStyle: { color: '#64748B', fontSize: 11 },
+                        splitLine: { lineStyle: { color: '#F1F5F9' } },
+                        axisLabel: { color: '#64748B', fontSize: 11, formatter: `${currencySym}{value}` }
+                    },
+                    {
+                        type: 'value',
+                        name: '涨幅走势 (%)',
+                        min: 0,
+                        max: yRateMax,
+                        nameTextStyle: { color: '#E11D48', fontSize: 11 },
+                        splitLine: { show: false },
+                        axisLabel: { color: '#E11D48', fontSize: 11, formatter: '{value}%' }
+                    }
+                ],
+                series: [
+                    {
+                        name: `买牌最低价 (${unitName})`,
+                        type: 'bar',
+                        barWidth: dates.length <= 6 ? 32 : (dates.length <= 10 ? 24 : 18),
+                        barMaxWidth: 40,
+                        itemStyle: { color: '#CBD5E1', borderRadius: [3, 3, 0, 0] },
+                        data: floorPrices,
+                        markLine: markLineConfig
+                    },
+                    {
+                        name: `成交价格 (${unitName})`,
+                        type: 'bar',
+                        barWidth: dates.length <= 6 ? 32 : (dates.length <= 10 ? 24 : 18),
+                        barMaxWidth: 40,
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#34D399' },
+                                { offset: 1, color: '#059669' }
+                            ]),
+                            borderRadius: [3, 3, 0, 0]
+                        },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#047857',
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null) ? '⚡待定' : `${currencySym}${params.value}`
+                        },
+                        data: dealPrices
+                    },
+                    {
+                        name: '溢价涨幅走势 (%)',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 8,
+                        lineStyle: { width: 3, color: '#E11D48' },
+                        itemStyle: { color: '#E11D48', borderWidth: 2, borderColor: '#FFFFFF' },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#E11D48',
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null || params.value === undefined) ? '' : (params.value === 0 ? '0%' : `+${params.value}%`)
+                        },
+                        data: rates
+                    }
+                ]
+            };
+            charts.semiSoftCoking.setOption(option, true);
+        }
+
+        // ==========================================
+        // 4. 中挥发份焦煤 vs 洗精主焦煤 vs 洗选半软焦煤 拍卖数量走势对比图
+        // ==========================================
+        function switchQuantityView(mode, btn) {
+            quantityViewMode = mode;
+            document.querySelectorAll('#quantity-view-tabs .chart-tab-btn').forEach(b => {
+                if (b.id !== 'btn-qty-stack') b.classList.remove('active');
+            });
+            if (btn) btn.classList.add('active');
+            updateQuantityTrendChart();
+        }
+
+        function toggleQuantityStack(btn) {
+            quantityIsStacked = !quantityIsStacked;
+            if (btn) {
+                if (quantityIsStacked) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            }
+            updateQuantityTrendChart();
+        }
+
+        function updateQuantityTrendChart() {
+            if (!charts.quantityTrend) {
+                const el = document.getElementById('chart-quantity-trend');
+                if (el && typeof echarts !== 'undefined') charts.quantityTrend = echarts.init(el);
+            }
+            if (!charts.quantityTrend) return;
+
+            const midRecords = currentRecords.filter(d => d.product.includes('中挥发'));
+            const washedRecords = currentRecords.filter(d => d.product.includes('洗精'));
+            const semiSoftRecords = currentRecords.filter(d => d.product.includes('半软'));
+
+            // 统计累计总量
+            const midTotalTons = midRecords.reduce((sum, d) => sum + (d.tons || 0), 0);
+            const washedTotalTons = washedRecords.reduce((sum, d) => sum + (d.tons || 0), 0);
+            const semiSoftTotalTons = semiSoftRecords.reduce((sum, d) => sum + (d.tons || 0), 0);
+            const grandTotalTons = midTotalTons + washedTotalTons + semiSoftTotalTons;
+
+            const midTotalWan = +(midTotalTons / 10000).toFixed(2);
+            const washedTotalWan = +(washedTotalTons / 10000).toFixed(2);
+            const semiSoftTotalWan = +(semiSoftTotalTons / 10000).toFixed(2);
+            const grandTotalWan = +(grandTotalTons / 10000).toFixed(2);
+
+            // 更新标题统计摘要
+            const summaryEl = document.getElementById('quantity-stat-summary');
+            if (summaryEl) {
+                summaryEl.innerHTML = `
+                    <span>中挥发: <strong style="color: #D97706;">${midTotalWan.toLocaleString()}</strong> 万吨 (${midRecords.length}场)</span>
+                    <span style="color: #CBD5E1;">|</span>
+                    <span>洗精主焦: <strong style="color: #0284C7;">${washedTotalWan.toLocaleString()}</strong> 万吨 (${washedRecords.length}场)</span>
+                    <span style="color: #CBD5E1;">|</span>
+                    <span>洗选半软: <strong style="color: #059669;">${semiSoftTotalWan.toLocaleString()}</strong> 万吨 (${semiSoftRecords.length}场)</span>
+                    <span style="color: #CBD5E1;">|</span>
+                    <span>全品种合计: <strong style="color: #6366F1;">${grandTotalWan.toLocaleString()}</strong> 万吨</span>
+                `;
+            }
+
+            let categories = [];
+            let midWanList = [];
+            let washedWanList = [];
+            let semiSoftWanList = [];
+            let totalWanList = [];
+            let detailsList = [];
+
+            if (quantityViewMode === 'daily') {
+                // 按日期汇总聚合
+                const daysSet = new Set();
+                midRecords.forEach(d => { if (d.date) daysSet.add(d.date.slice(0, 10)); });
+                washedRecords.forEach(d => { if (d.date) daysSet.add(d.date.slice(0, 10)); });
+                semiSoftRecords.forEach(d => { if (d.date) daysSet.add(d.date.slice(0, 10)); });
+                const sortedDays = Array.from(daysSet).sort();
+
+                categories = sortedDays.map(d => d.replace(/^20\d\d-/, ''));
+
+                sortedDays.forEach(day => {
+                    const dayMid = midRecords.filter(d => d.date.startsWith(day));
+                    const dayWashed = washedRecords.filter(d => d.date.startsWith(day));
+                    const daySemiSoft = semiSoftRecords.filter(d => d.date.startsWith(day));
+
+                    const midTons = dayMid.reduce((s, d) => s + (d.tons || 0), 0);
+                    const washedTons = dayWashed.reduce((s, d) => s + (d.tons || 0), 0);
+                    const semiSoftTons = daySemiSoft.reduce((s, d) => s + (d.tons || 0), 0);
+                    const totalTons = midTons + washedTons + semiSoftTons;
+
+                    const midWan = +(midTons / 10000).toFixed(2);
+                    const washedWan = +(washedTons / 10000).toFixed(2);
+                    const semiSoftWan = +(semiSoftTons / 10000).toFixed(2);
+                    const totalWan = +(totalTons / 10000).toFixed(2);
+
+                    midWanList.push(midWan);
+                    washedWanList.push(washedWan);
+                    semiSoftWanList.push(semiSoftWan);
+                    totalWanList.push(totalWan);
+
+                    detailsList.push({
+                        dateStr: day,
+                        midTons: midTons,
+                        midWan: midWan,
+                        midCount: dayMid.length,
+                        washedTons: washedTons,
+                        washedWan: washedWan,
+                        washedCount: dayWashed.length,
+                        semiSoftTons: semiSoftTons,
+                        semiSoftWan: semiSoftWan,
+                        semiSoftCount: daySemiSoft.length,
+                        totalTons: totalTons,
+                        totalWan: totalWan
+                    });
+                });
+            } else {
+                // 按单场批次时间戳
+                const sessionMap = new Map();
+                [...midRecords, ...washedRecords, ...semiSoftRecords]
+                    .sort((a, b) => new Date(a.date) - new Date(b.date) || a.id - b.id)
+                    .forEach(r => {
+                        const ts = r.date;
+                        if (!sessionMap.has(ts)) {
+                            sessionMap.set(ts, { ts, mid: [], washed: [], semiSoft: [] });
+                        }
+                        if (r.product.includes('中挥发')) sessionMap.get(ts).mid.push(r);
+                        if (r.product.includes('洗精')) sessionMap.get(ts).washed.push(r);
+                        if (r.product.includes('半软')) sessionMap.get(ts).semiSoft.push(r);
+                    });
+
+                const sortedSessions = Array.from(sessionMap.values()).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+                categories = sortedSessions.map(s => s.ts.replace(/^20\d\d-/, ''));
+
+                sortedSessions.forEach(s => {
+                    const midTons = s.mid.reduce((sum, d) => sum + (d.tons || 0), 0);
+                    const washedTons = s.washed.reduce((sum, d) => sum + (d.tons || 0), 0);
+                    const semiSoftTons = s.semiSoft.reduce((sum, d) => sum + (d.tons || 0), 0);
+                    const totalTons = midTons + washedTons + semiSoftTons;
+
+                    const midWan = +(midTons / 10000).toFixed(2);
+                    const washedWan = +(washedTons / 10000).toFixed(2);
+                    const semiSoftWan = +(semiSoftTons / 10000).toFixed(2);
+                    const totalWan = +(totalTons / 10000).toFixed(2);
+
+                    midWanList.push(midWan);
+                    washedWanList.push(washedWan);
+                    semiSoftWanList.push(semiSoftWan);
+                    totalWanList.push(totalWan);
+
+                    detailsList.push({
+                        dateStr: s.ts,
+                        midTons: midTons,
+                        midWan: midWan,
+                        midCount: s.mid.length,
+                        midLots: s.mid.map(d => `${d.amount}`),
+                        washedTons: washedTons,
+                        washedWan: washedWan,
+                        washedCount: s.washed.length,
+                        washedLots: s.washed.map(d => `${d.amount}`),
+                        semiSoftTons: semiSoftTons,
+                        semiSoftWan: semiSoftWan,
+                        semiSoftCount: s.semiSoft.length,
+                        semiSoftLots: s.semiSoft.map(d => `${d.amount}`),
+                        totalTons: totalTons,
+                        totalWan: totalWan
+                    });
+                });
+            }
+
+            const maxTotalWan = Math.max(...totalWanList, 1);
+            const yMax = Math.ceil(maxTotalWan * (quantityIsStacked ? 1.15 : 1.25));
+
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E2E8F0',
+                    textStyle: { color: '#0F172A', fontSize: 12 },
+                    extraCssText: 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border-radius: 8px;',
+                    formatter: function (params) {
+                        if (!params || !params.length) return '';
+                        const idx = params[0].dataIndex;
+                        const item = detailsList[idx];
+                        if (!item) return '';
+
+                        let html = `<div style="font-size: 13px; font-weight: 700; color: #0F172A; margin-bottom: 8px; border-bottom: 1px solid #F1F5F9; padding-bottom: 4px;">
+                            📅 ${item.dateStr} 拍卖挂牌统计
+                        </div>`;
+
+                        html += `<div style="margin-bottom: 6px;">
+                            <div style="display: flex; justify-content: space-between; gap: 16px; align-items: center;">
+                                <span style="color: #D97706; font-weight: 600;">● 中挥发份性焦煤:</span>
+                                <strong style="font-family: var(--font-mono); color: #0F172A;">${item.midWan.toFixed(2)} 万吨</strong>
+                            </div>
+                            <div style="font-size: 11px; color: #64748B; margin-left: 14px;">
+                                共 ${item.midCount} 场 · ${item.midTons.toLocaleString()} 吨
+                                ${item.midLots && item.midLots.length ? ` (${item.midLots.join('; ')})` : ''}
+                            </div>
+                        </div>`;
+
+                        html += `<div style="margin-bottom: 6px;">
+                            <div style="display: flex; justify-content: space-between; gap: 16px; align-items: center;">
+                                <span style="color: #0284C7; font-weight: 600;">● 洗精主焦煤:</span>
+                                <strong style="font-family: var(--font-mono); color: #0F172A;">${item.washedWan.toFixed(2)} 万吨</strong>
+                            </div>
+                            <div style="font-size: 11px; color: #64748B; margin-left: 14px;">
+                                共 ${item.washedCount} 场 · ${item.washedTons.toLocaleString()} 吨
+                                ${item.washedLots && item.washedLots.length ? ` (${item.washedLots.join('; ')})` : ''}
+                            </div>
+                        </div>`;
+
+                        html += `<div style="margin-bottom: 6px;">
+                            <div style="display: flex; justify-content: space-between; gap: 16px; align-items: center;">
+                                <span style="color: #059669; font-weight: 600;">● 洗选半软焦煤:</span>
+                                <strong style="font-family: var(--font-mono); color: #0F172A;">${item.semiSoftWan.toFixed(2)} 万吨</strong>
+                            </div>
+                            <div style="font-size: 11px; color: #64748B; margin-left: 14px;">
+                                共 ${item.semiSoftCount} 场 · ${item.semiSoftTons.toLocaleString()} 吨
+                                ${item.semiSoftLots && item.semiSoftLots.length ? ` (${item.semiSoftLots.join('; ')})` : ''}
+                            </div>
+                        </div>`;
+
+                        html += `<div style="border-top: 1px dashed #CBD5E1; padding-top: 6px; margin-top: 4px; display: flex; justify-content: space-between; gap: 16px; align-items: center;">
+                            <span style="color: #6366F1; font-weight: 700;">📊 全品种挂牌合计:</span>
+                            <strong style="font-family: var(--font-mono); color: #6366F1; font-size: 13px;">${item.totalWan.toFixed(2)} 万吨 <span style="font-size: 11px; font-weight: normal; color: #64748B;">(${item.totalTons.toLocaleString()} 吨)</span></strong>
+                        </div>`;
+
+                        return html;
+                    }
+                },
+                legend: {
+                    data: ['中挥发份性焦煤 (万吨)', '洗精主焦煤 (万吨)', '洗选半软焦煤 (万吨)', '全品种合计挂牌量 (万吨)'],
+                    top: 0,
+                    textStyle: { color: '#475569', fontSize: 11 }
+                },
+                grid: { top: 46, bottom: 38, left: 55, right: 40 },
+                xAxis: {
+                    type: 'category',
+                    data: categories,
+                    boundaryGap: true,
+                    axisTick: { alignWithLabel: true, interval: 'auto' },
+                    axisLine: { lineStyle: { color: '#CBD5E1' } },
+                    axisLabel: {
+                        interval: 'auto',
+                        hideOverlap: true,
+                        color: '#475569',
+                        fontSize: 11,
+                        rotate: quantityViewMode === 'session' && categories.length > 8 ? 20 : 0
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '挂牌数量 (万吨)',
+                    max: yMax,
+                    nameTextStyle: { color: '#64748B', fontSize: 11 },
+                    splitLine: { lineStyle: { color: '#F1F5F9' } },
+                    axisLabel: { color: '#64748B', fontSize: 11, formatter: '{value} 万' }
+                },
+                series: [
+                    {
+                        name: '中挥发份性焦煤 (万吨)',
+                        type: 'bar',
+                        stack: quantityIsStacked ? 'coal' : undefined,
+                        barWidth: categories.length <= 6 ? (quantityIsStacked ? 48 : 28) : (categories.length <= 10 ? (quantityIsStacked ? 38 : 20) : (categories.length <= 16 ? (quantityIsStacked ? 26 : 14) : undefined)),
+                        barMaxWidth: quantityIsStacked ? 68 : 38,
+                        barGap: '12%',
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#FBBF24' },
+                                { offset: 1, color: '#D97706' }
+                            ]),
+                            borderRadius: quantityIsStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]
+                        },
+                        label: {
+                            show: true,
+                            position: quantityIsStacked ? 'inside' : 'top',
+                            distance: 5,
+                            formatter: function (params) {
+                                if (!params.value || params.value <= 0) return '';
+                                if (quantityIsStacked && params.value < 1.5) return '';
+                                return `${params.value}万`;
+                            },
+                            color: quantityIsStacked ? '#FFFFFF' : '#B45309',
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            textBorderColor: quantityIsStacked ? 'rgba(0,0,0,0.45)' : '#FFFFFF',
+                            textBorderWidth: quantityIsStacked ? 2 : 3
+                        },
+                        data: midWanList
+                    },
+                    {
+                        name: '洗精主焦煤 (万吨)',
+                        type: 'bar',
+                        stack: quantityIsStacked ? 'coal' : undefined,
+                        barWidth: categories.length <= 6 ? (quantityIsStacked ? 48 : 28) : (categories.length <= 10 ? (quantityIsStacked ? 38 : 20) : (categories.length <= 16 ? (quantityIsStacked ? 26 : 14) : undefined)),
+                        barMaxWidth: quantityIsStacked ? 68 : 38,
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#38BDF8' },
+                                { offset: 1, color: '#0284C7' }
+                            ]),
+                            borderRadius: quantityIsStacked ? [0, 0, 0, 0] : [4, 4, 0, 0]
+                        },
+                        label: {
+                            show: true,
+                            position: quantityIsStacked ? 'inside' : 'top',
+                            distance: 5,
+                            formatter: function (params) {
+                                if (!params.value || params.value <= 0) return '';
+                                if (quantityIsStacked && params.value < 1.5) return '';
+                                return `${params.value}万`;
+                            },
+                            color: quantityIsStacked ? '#FFFFFF' : '#0369A1',
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            textBorderColor: quantityIsStacked ? 'rgba(0,0,0,0.45)' : '#FFFFFF',
+                            textBorderWidth: quantityIsStacked ? 2 : 3
+                        },
+                        data: washedWanList
+                    },
+                    {
+                        name: '洗选半软焦煤 (万吨)',
+                        type: 'bar',
+                        stack: quantityIsStacked ? 'coal' : undefined,
+                        barWidth: categories.length <= 6 ? (quantityIsStacked ? 48 : 28) : (categories.length <= 10 ? (quantityIsStacked ? 38 : 20) : (categories.length <= 16 ? (quantityIsStacked ? 26 : 14) : undefined)),
+                        barMaxWidth: quantityIsStacked ? 68 : 38,
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#34D399' },
+                                { offset: 1, color: '#059669' }
+                            ]),
+                            borderRadius: [4, 4, 0, 0]
+                        },
+                        label: {
+                            show: true,
+                            position: quantityIsStacked ? 'inside' : 'top',
+                            distance: 5,
+                            formatter: function (params) {
+                                if (!params.value || params.value <= 0) return '';
+                                if (quantityIsStacked && params.value < 1.5) return '';
+                                return `${params.value}万`;
+                            },
+                            color: quantityIsStacked ? '#FFFFFF' : '#047857',
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            textBorderColor: quantityIsStacked ? 'rgba(0,0,0,0.45)' : '#FFFFFF',
+                            textBorderWidth: quantityIsStacked ? 2 : 3
+                        },
+                        data: semiSoftWanList
+                    },
+                    {
+                        name: '全品种合计挂牌量 (万吨)',
+                        type: 'line',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 8,
+                        lineStyle: { width: 3, color: '#6366F1', shadowColor: 'rgba(99, 102, 241, 0.25)', shadowBlur: 6 },
+                        itemStyle: { color: '#6366F1', borderWidth: 2, borderColor: '#FFFFFF' },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            distance: 6,
+                            formatter: function (params) {
+                                return params.value > 0 ? `${params.value}万` : '';
+                            },
+                            color: '#4F46E5',
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            textBorderColor: '#FFFFFF',
+                            textBorderWidth: 3
+                        },
+                        data: totalWanList
+                    }
+                ]
+            };
+
+            charts.quantityTrend.setOption(option, true);
+        }
+
+        // 4. 更新各场拍卖涨幅走势图的 Tabs 与图表逻辑
+        function updateAllRatesTabs() {
+            const container = document.getElementById('rates-chart-tabs');
+            if (!container) return;
+
+            // 统计各产品类型与币种组合
+            const comboMap = new Map();
+            currentRecords.forEach(r => {
+                const key = `${r.product}__${r.currency}`;
+                if (!comboMap.has(key)) {
+                    comboMap.set(key, {
+                        key: key,
+                        product: r.product,
+                        currency: r.currency,
+                        count: 0
+                    });
+                }
+                comboMap.get(key).count++;
+            });
+
+            let html = `<button class="chart-tab-btn ${currentRatesTab === 'all' ? 'active' : ''}" onclick="switchAllRatesTab('all', this)">全部 (${currentRecords.length})</button>`;
+
+            comboMap.forEach(item => {
+                const isActive = currentRatesTab === item.key ? 'active' : '';
+                html += `<button class="chart-tab-btn ${isActive}" onclick="switchAllRatesTab('${item.key}', this)">${item.product} (${item.currency}) · ${item.count}笔</button>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function switchAllRatesTab(tabKey, btn) {
+            currentRatesTab = tabKey;
+            document.querySelectorAll('#rates-chart-tabs .chart-tab-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            updateAllRatesChart();
+        }
+
+        function updateAllRatesChart() {
+            if (!charts.allRates) {
+                const el = document.getElementById('chart-all-rates');
+                if (el && typeof echarts !== 'undefined') charts.allRates = echarts.init(el);
+            }
+            if (!charts.allRates) return;
+
+            let filtered = currentRecords;
+            if (currentRatesTab !== 'all') {
+                const [targetProd, targetCurr] = currentRatesTab.split('__');
+                filtered = currentRecords.filter(d => d.product === targetProd && d.currency === targetCurr);
+            }
+
+            const sortedAll = [...filtered].sort((a, b) => new Date(a.date) - new Date(b.date));
+            const rates = sortedAll.map(d => d.hasDealt && !d.isUnsold ? d.rate : null);
+            const isAll = currentRatesTab === 'all';
+
+            // X 轴日期/品类标签
+            const xLabels = sortedAll.map(d => {
+                const dateClean = d.date.replace('2026-', '').replace(':00', '');
+                if (isAll) {
+                    return `${dateClean}\n[${d.currency}] ${d.product}`;
+                } else {
+                    return `${dateClean}\n${d.seller.slice(0, 6)}`;
+                }
+            });
+
+            if (sortedAll.length > 0) {
+                const minD = sortedAll[0].date.slice(0, 10);
+                const maxD = sortedAll[sortedAll.length - 1].date.slice(0, 10);
+                document.getElementById('chart-time-range-tag').textContent = `统计区间: ${minD} ~ ${maxD} (共 ${sortedAll.length} 场)`;
+            } else {
+                document.getElementById('chart-time-range-tag').textContent = `暂无该分类数据`;
+            }
+
+            // 数据准备
+            const floorPrices = sortedAll.map(d => d.floorPrice);
+            const diffPrices = sortedAll.map(d => d.hasDealt && !d.isUnsold ? parseFloat(d.diff) : 0);
+            const validDealPrices = sortedAll.filter(d => d.hasDealt && !d.isUnsold && typeof d.dealPrice === 'number').map(d => d.dealPrice);
+
+            let yAxisConfig = [];
+            let seriesConfig = [];
+            let legendData = [];
+
+            if (!isAll && sortedAll.length > 0) {
+                // ==========================================
+                // 单一煤种 Tab：绝对金额堆叠瀑布柱 (起拍最低价 + 溢价差额 = 成交总价) + 右轴涨幅折线
+                // ==========================================
+                const sym = sortedAll[0].currencySym;
+                const currency = sortedAll[0].currency;
+                const maxDeal = validDealPrices.length ? Math.max(...validDealPrices) : (floorPrices.length ? Math.max(...floorPrices) : 100);
+                const yPriceMax = Math.ceil(maxDeal * 1.18);
+
+                legendData = ['起拍最低价基座', '竞价绝对溢价额', '溢价涨幅走势 (%)'];
+
+                const validRates = rates.filter(r => typeof r === 'number');
+                const minRate = validRates.length ? Math.min(...validRates) : 0;
+                const maxRate = validRates.length ? Math.max(...validRates) : 30;
+
+                yAxisConfig = [
+                    {
+                        type: 'value',
+                        name: `价格 (${sym}/吨 - ${currency})`,
+                        min: 0,
+                        max: yPriceMax,
+                        nameTextStyle: { color: '#64748B', fontSize: 11 },
+                        splitLine: { lineStyle: { color: '#F1F5F9' } },
+                        axisLabel: { color: '#64748B', fontSize: 11, formatter: `${sym}{value}` }
+                    },
+                    {
+                        type: 'value',
+                        name: '涨幅走势 (%)',
+                        min: Math.max(0, Math.floor(minRate / 5) * 5 - 5),
+                        max: Math.ceil(maxRate / 5) * 5 + 5,
+                        nameTextStyle: { color: '#E11D48', fontSize: 11 },
+                        splitLine: { show: false },
+                        axisLabel: { color: '#E11D48', fontSize: 11, formatter: '+{value}%' }
+                    }
+                ];
+
+                seriesConfig = [
+                    {
+                        name: '起拍最低价基座',
+                        type: 'bar',
+                        stack: 'priceWaterfall',
+                        yAxisIndex: 0,
+                        barWidth: 32,
+                        itemStyle: {
+                            color: '#E2E8F0',
+                            borderColor: '#CBD5E1',
+                            borderWidth: 1,
+                            borderType: 'dashed'
+                        },
+                        label: {
+                            show: true,
+                            position: 'inside',
+                            color: '#475569',
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            formatter: params => `${sym}${params.value}`
+                        },
+                        data: floorPrices
+                    },
+                    {
+                        name: '竞价绝对溢价额',
+                        type: 'bar',
+                        stack: 'priceWaterfall',
+                        yAxisIndex: 0,
+                        barWidth: 32,
+                        itemStyle: {
+                            borderRadius: [4, 4, 0, 0],
+                            color: function (params) {
+                                const prod = sortedAll[params.dataIndex].product;
+                                if (prod.includes('中挥发')) {
+                                    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#F59E0B' },
+                                        { offset: 1, color: '#D97706' }
+                                    ]);
+                                } else if (prod.includes('洗精')) {
+                                    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#38BDF8' },
+                                        { offset: 1, color: '#0284C7' }
+                                    ]);
+                                } else {
+                                    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#10B981' },
+                                        { offset: 1, color: '#047857' }
+                                    ]);
+                                }
+                            }
+                        },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#0F172A',
+                            fontWeight: 'bold',
+                            fontSize: 11,
+                            formatter: params => {
+                                const d = sortedAll[params.dataIndex];
+                                if (!d) return '';
+                                if (d.isUnsold) return '🚫流拍';
+                                if (!d.hasDealt) return '⚡待定';
+                                return `${sym}${d.dealPrice}\n(+${d.rate}%)`;
+                            }
+                        },
+                        data: diffPrices
+                    },
+                    {
+                        name: '溢价涨幅走势 (%)',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 8,
+                        lineStyle: { width: 3, color: '#E11D48' },
+                        itemStyle: { color: '#E11D48', borderWidth: 2, borderColor: '#FFFFFF' },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#E11D48',
+                            fontSize: 10,
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null || params.value === undefined) ? '' : (params.value === 0 ? '0%' : `+${params.value}%`)
+                        },
+                        data: rates
+                    }
+                ];
+
+            } else {
+                // ==========================================
+                // “全部”Tab（包含 USD 与 CNY 多币种）：
+                // 采用【起拍价基准 (100%) + 溢价增量 (%) 堆叠瀑布柱】+ 右轴涨幅走势折线
+                // 柱顶与柱体精准标注起拍价底线与成交总价
+                // ==========================================
+                legendData = ['起拍底价基准 (100%)', '竞价溢价增量 (%)', '溢价涨幅走势 (%)'];
+
+                const validRates = rates.filter(r => typeof r === 'number');
+                const maxR = validRates.length ? Math.max(...validRates) : 30;
+                const yRateMaxAll = Math.max(20, Math.ceil(maxR / 5) * 5 + 5);
+
+                yAxisConfig = [
+                    {
+                        type: 'value',
+                        name: '价格相对结构 (%)',
+                        min: 80,
+                        max: 165,
+                        nameTextStyle: { color: '#64748B', fontSize: 11 },
+                        splitLine: { lineStyle: { color: '#F1F5F9' } },
+                        axisLabel: { color: '#64748B', fontSize: 11, formatter: '{value}%' }
+                    },
+                    {
+                        type: 'value',
+                        name: '溢价涨幅走势 (%)',
+                        min: 0,
+                        max: yRateMaxAll,
+                        nameTextStyle: { color: '#E11D48', fontSize: 11 },
+                        splitLine: { show: false },
+                        axisLabel: { color: '#E11D48', fontSize: 11, formatter: '+{value}%' }
+                    }
+                ];
+
+                seriesConfig = [
+                    {
+                        name: '起拍底价基准 (100%)',
+                        type: 'bar',
+                        stack: 'priceWaterfallAll',
+                        yAxisIndex: 0,
+                        barWidth: 26,
+                        itemStyle: {
+                            color: '#E2E8F0',
+                            borderColor: '#CBD5E1',
+                            borderWidth: 1,
+                            borderType: 'dashed'
+                        },
+                        label: {
+                            show: true,
+                            position: 'inside',
+                            color: '#475569',
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            formatter: params => {
+                                const d = sortedAll[params.dataIndex];
+                                return `底${d.currencySym}${d.floorPrice}`;
+                            }
+                        },
+                        data: sortedAll.map(() => 100)
+                    },
+                    {
+                        name: '竞价溢价增量 (%)',
+                        type: 'bar',
+                        stack: 'priceWaterfallAll',
+                        yAxisIndex: 0,
+                        barWidth: 26,
+                        itemStyle: {
+                            borderRadius: [4, 4, 0, 0],
+                            color: function (params) {
+                                const prod = sortedAll[params.dataIndex].product;
+                                if (prod.includes('中挥发')) {
+                                    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#F59E0B' },
+                                        { offset: 1, color: '#D97706' }
+                                    ]);
+                                } else if (prod.includes('洗精')) {
+                                    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#38BDF8' },
+                                        { offset: 1, color: '#0284C7' }
+                                    ]);
+                                } else {
+                                    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                        { offset: 0, color: '#10B981' },
+                                        { offset: 1, color: '#047857' }
+                                    ]);
+                                }
+                            }
+                        },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#0F172A',
+                            fontWeight: 'bold',
+                            fontSize: 11,
+                            formatter: params => {
+                                const d = sortedAll[params.dataIndex];
+                                if (!d) return '';
+                                if (d.isUnsold) return '🚫流拍';
+                                if (!d.hasDealt) return '⚡待定';
+                                return `${d.currencySym}${d.dealPrice}\n(+${d.rate}%)`;
+                            }
+                        },
+                        data: rates
+                    },
+                    {
+                        name: '溢价涨幅走势 (%)',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 8,
+                        lineStyle: { width: 3, color: '#E11D48' },
+                        itemStyle: { color: '#E11D48', borderWidth: 2, borderColor: '#FFFFFF' },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#E11D48',
+                            fontSize: 10,
+                            fontWeight: 'bold',
+                            formatter: params => (params.value === '-' || params.value === null || params.value === undefined) ? '' : (params.value === 0 ? '0%' : `+${params.value}%`)
+                        },
+                        data: rates
+                    }
+                ];
+            }
+
+            const option = {
+                backgroundColor: 'transparent',
+                legend: {
+                    data: legendData,
+                    textStyle: { color: '#475569', fontSize: 11 },
+                    top: 0
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#E2E8F0',
+                    textStyle: { color: '#0F172A' },
+                    extraCssText: 'box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); border-radius: 8px;',
+                    formatter: function (params) {
+                        const idx = params[0].dataIndex;
+                        const item = sortedAll[idx];
+                        if (!item) return '';
+
+                        let dealHtml = '';
+                        let diffHtml = '';
+                        let rateHtml = '';
+                        if (item.isUnsold) {
+                            dealHtml = `<strong style="color: #DC2626; font-size: 1.05em;">🚫 流拍 (无买家出价)</strong>`;
+                            diffHtml = `<span style="color: #64748B;">-</span>`;
+                            rateHtml = `<span style="color: #64748B; font-weight: 600;">流拍</span>`;
+                        } else if (item.hasDealt) {
+                            dealHtml = `<strong style="color: #0F172A; font-size: 1.05em;">${item.currencySym}${item.dealPrice}</strong> / 吨`;
+                            diffHtml = `<strong style="color: #059669;">+${item.currencySym}${item.diff}</strong> / 吨`;
+                            rateHtml = `<strong style="color: #E11D48;">+${item.rate}%</strong>`;
+                        } else {
+                            dealHtml = `<strong style="color:#D97706">⚡ 待出价 / 竞价中</strong>`;
+                            diffHtml = `<span style="color: #64748B;">待定</span>`;
+                            rateHtml = `<span style="color: #64748B;">待定</span>`;
+                        }
+
+                        return `
+                            <div style="font-weight: 700; margin-bottom: 4px; color: #0284C7;">
+                                【${item.product}】· 币种: ${item.currency} (${item.currencySym})
+                            </div>
+                            <div style="font-size: 0.8rem; line-height: 1.6; color: #334155;">
+                                卖方机构：${item.seller}<br/>
+                                拍卖时间：${item.date}<br/>
+                                挂牌数量：${item.amount}<br/>
+                                <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 6px 0;">
+                                起拍最低价：<strong style="color: #64748B;">${item.currencySym}${item.floorPrice}</strong> / 吨<br/>
+                                竞价溢价额：${diffHtml}<br/>
+                                最终成交价：${dealHtml}<br/>
+                                竞价溢价率：${rateHtml}
+                            </div>
+                        `;
+                    }
+                },
+                grid: { top: 45, bottom: isAll ? 56 : 42, left: 65, right: 55 },
+                xAxis: {
+                    type: 'category',
+                    data: xLabels,
+                    boundaryGap: true,
+                    axisTick: { alignWithLabel: true, interval: 'auto' },
+                    axisLine: { lineStyle: { color: '#CBD5E1' } },
+                    axisLabel: {
+                        color: '#475569',
+                        fontSize: 11,
+                        interval: 'auto', // 自适应间隔显示坐标轴，保证柱形图完整且防止标签重叠
+                        hideOverlap: true
+                    }
+                },
+                yAxis: yAxisConfig,
+                series: seriesConfig
+            };
+
+            charts.allRates.setOption(option, true);
+        }
+
+        // ==========================================
+        // 5. 统一数据台账模块交互与渲染 (Unified Auction Table)
+        // ==========================================
+        let tableSelectedProduct = 'ALL';
+        let tableSelectedSeller = 'ALL';
+        let tableSelectedStatus = 'ALL';
+        let tableSearchQuery = '';
+
+        function initTableControls(list) {
+            const capsuleBox = document.getElementById('table-product-capsules');
+            const sellerSelect = document.getElementById('table-seller-filter');
+            if (!capsuleBox) return;
+
+            // 1. 提取所有煤种及数量统计
+            const productCounts = {};
+            list.forEach(r => {
+                const p = r.product || '未分类';
+                productCounts[p] = (productCounts[p] || 0) + 1;
+            });
+
+            // 生成煤种胶囊按钮
+            const products = Object.keys(productCounts);
+            let pillsHtml = `
+                <button type="button" class="capsule-pill-btn ${tableSelectedProduct === 'ALL' ? 'active' : ''}" onclick="switchTableProduct('ALL', this)">
+                    全部煤种 <span class="capsule-pill-badge">${list.length}</span>
+                </button>
+            `;
+            products.forEach(p => {
+                const isActive = tableSelectedProduct === p;
+                let dotColor = '#0284C7';
+                if (p.includes('中挥发')) dotColor = '#D97706';
+                else if (p.includes('半软')) dotColor = '#059669';
+                else if (p.includes('1/3')) dotColor = '#7C3AED';
+
+                pillsHtml += `
+                    <button type="button" class="capsule-pill-btn ${isActive ? 'active' : ''}" onclick="switchTableProduct('${p}', this)">
+                        <span class="capsule-dot" style="background: ${dotColor};"></span>
+                        ${p} <span class="capsule-pill-badge">${productCounts[p]}</span>
+                    </button>
+                `;
+            });
+            capsuleBox.innerHTML = pillsHtml;
+
+            // 2. 提取并填充卖方下拉框（若存在）
+            if (sellerSelect) {
+                const sellers = Array.from(new Set(list.map(r => r.seller).filter(Boolean))).sort();
+                const currentSellerVal = sellerSelect.value || tableSelectedSeller;
+                let sellerOptions = '<option value="ALL">🏢 全部卖方机构</option>';
+                sellers.forEach(s => {
+                    sellerOptions += `<option value="${s}" ${currentSellerVal === s ? 'selected' : ''}>${s}</option>`;
+                });
+                sellerSelect.innerHTML = sellerOptions;
+            }
+        }
+
+        function switchTableProduct(prodName, btnEl) {
+            tableSelectedProduct = prodName;
+            const container = document.getElementById('table-product-capsules');
+            if (container) {
+                container.querySelectorAll('.capsule-pill-btn').forEach(btn => btn.classList.remove('active'));
+            }
+            if (btnEl) btnEl.classList.add('active');
+            renderUnifiedTable();
+        }
+
+        function onTableFilterChange() {
+            const sellerEl = document.getElementById('table-seller-filter');
+            const statusEl = document.getElementById('table-status-filter');
+            const searchEl = document.getElementById('table-search-input');
+
+            if (sellerEl) tableSelectedSeller = sellerEl.value;
+            if (statusEl) tableSelectedStatus = statusEl.value;
+            if (searchEl) tableSearchQuery = (searchEl.value || '').trim().toLowerCase();
+
+            renderUnifiedTable();
+        }
+
+        function getFilteredTableData() {
+            return currentRecords.filter(item => {
+                // 1. 煤种筛选
+                if (tableSelectedProduct !== 'ALL' && item.product !== tableSelectedProduct) {
+                    return false;
+                }
+                // 2. 卖方筛选
+                if (tableSelectedSeller !== 'ALL' && item.seller !== tableSelectedSeller) {
+                    return false;
+                }
+                // 3. 成交状态筛选
+                if (tableSelectedStatus === 'DEALT') {
+                    if (!item.hasDealt || item.isUnsold) return false;
+                } else if (tableSelectedStatus === 'UNSOLD') {
+                    if (!item.isUnsold) return false;
+                } else if (tableSelectedStatus === 'PENDING') {
+                    if (item.hasDealt || item.isUnsold) return false;
+                }
+                // 4. 关键字搜索（产品、卖方、地点、运输、日期）
+                if (tableSearchQuery) {
+                    const fullText = `${item.product || ''} ${item.seller || ''} ${item.location || ''} ${item.transport || ''} ${item.date || ''}`.toLowerCase();
+                    if (!fullText.includes(tableSearchQuery)) return false;
+                }
+                return true;
+            });
+        }
+
+        function renderUnifiedTable() {
+            const tbody = document.getElementById('unified-auction-tbody');
+            const countStatEl = document.getElementById('stat-table-count');
+            const tonsStatEl = document.getElementById('stat-table-tons');
+            const maxDealStatEl = document.getElementById('stat-table-maxdeal');
+            const avgRateStatEl = document.getElementById('stat-table-avgrate');
+            const footerHintEl = document.getElementById('table-footer-hint');
+
+            if (!tbody) return;
+
+            const filtered = getFilteredTableData();
+
+            // 计算顶部统计指标
+            const totalCount = filtered.length;
+            let totalTons = 0;
+            const dealtItems = filtered.filter(r => r.hasDealt && !r.isUnsold && typeof r.dealPrice === 'number' && r.dealPrice > 0);
+            const unsoldItems = filtered.filter(r => r.isUnsold);
+
+            filtered.forEach(r => {
+                let tons = 0;
+                if (typeof r.amount === 'string') {
+                    if (r.amount.includes('万吨')) {
+                        tons = parseFloat(r.amount) * 10000;
+                    } else if (r.amount.includes('吨')) {
+                        tons = parseFloat(r.amount);
+                    }
+                }
+                if (!isNaN(tons)) totalTons += tons;
+            });
+
+            const maxDealPrice = dealtItems.length ? Math.max(...dealtItems.map(r => r.dealPrice)) : null;
+            const avgRate = dealtItems.length ? (dealtItems.reduce((s, r) => s + (r.rate || 0), 0) / dealtItems.length).toFixed(1) : '-';
+
+            if (countStatEl) countStatEl.textContent = `${totalCount} 场`;
+            if (tonsStatEl) tonsStatEl.textContent = totalTons > 0 ? (totalTons >= 10000 ? `${(totalTons / 10000).toFixed(2)} 万吨` : `${Math.round(totalTons)} 吨`) : '-';
+            if (maxDealStatEl) maxDealStatEl.textContent = maxDealPrice ? `¥${maxDealPrice.toLocaleString()}/吨` : (unsoldItems.length ? '流拍' : '待成交');
+            if (avgRateStatEl) {
+                avgRateStatEl.textContent = avgRate !== '-' ? `+${avgRate}%` : (unsoldItems.length ? '流拍' : '-');
+                avgRateStatEl.style.color = avgRate !== '-' ? '#E11D48' : 'var(--text-secondary)';
+            }
+
+            if (footerHintEl) {
+                footerHintEl.innerHTML = `当前共展示 <strong>${totalCount}</strong> 笔记录 (已成交 <strong>${dealtItems.length}</strong> 场${unsoldItems.length > 0 ? ` · <span style="color:#DC2626;font-weight:600;">含 ${unsoldItems.length} 场流拍</span>` : ''})`;
+            }
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="11" style="text-align: center; padding: 48px 16px; color: var(--text-muted);">
+                            <div style="font-size: 2rem; margin-bottom: 8px;">🔍</div>
+                            <div style="font-size: 0.95rem; font-weight: 600; color: #475569;">未匹配到符合当前筛选条件的拍卖记录</div>
+                            <div style="font-size: 0.8rem; margin-top: 4px;">您可以切换上方煤种胶囊或清除卖方/状态筛选框重试</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map((item, idx) => {
+                let dealStr = '';
+                let diffStr = '-';
+                let rateStr = item.rateStr;
+                let statusBadge = '<span class="status-badge-chip badge-dealt">已成交</span>';
+
+                if (item.isUnsold) {
+                    dealStr = `<span class="status-pill-unsold" style="padding: 2px 8px;"><span class="dot-unsold"></span>🚫<span style="font-size: 0.72rem; color: #DC2626; font-weight: 700;">(流拍)</span></span>`;
+                    diffStr = '-';
+                    rateStr = '<span style="color: #64748B; font-size: 0.76rem; font-weight: 600; background: #F8FAFC; border: 1px solid #E2E8F0; padding: 2px 6px; border-radius: 4px;">流拍</span>';
+                    statusBadge = '<span class="status-badge-chip badge-unsold">流拍</span>';
+                } else if (item.hasDealt) {
+                    dealStr = `${item.currencySym || '¥'}${item.dealPrice}`;
+                    diffStr = `+${item.currencySym || '¥'}${item.diff}`;
+                    rateStr = `<span class="tag-rate">${item.rateStr}</span>`;
+                    statusBadge = '<span class="status-badge-chip badge-dealt">已成交</span>';
+                } else {
+                    dealStr = '<span class="status-pill-pending"><span class="dot"></span>⚡ 待出价</span>';
+                    diffStr = '-';
+                    rateStr = `<span class="tag-rate">${item.rateStr}</span>`;
+                    statusBadge = '<span class="status-badge-chip badge-pending">待出价</span>';
+                }
+
+                let tagClass = 'tag-zhujiao';
+                if ((item.product || '').includes('中挥发')) tagClass = 'tag-zhonghui';
+                else if ((item.product || '').includes('半软')) tagClass = 'tag-banruan';
+                else if ((item.product || '').includes('1/3')) tagClass = 'tag-zhujiao';
+
+                return `
+                    <tr>
+                        <td style="font-family: var(--font-mono); color: var(--text-muted); width: 45px; text-align: center;">${idx + 1}</td>
+                        <td><span class="product-badge ${tagClass}" style="font-size: 0.75rem; padding: 3px 8px;">${item.product}</span></td>
+                        <td style="color: #0F172A; font-weight: 600;">${item.seller}</td>
+                        <td style="font-family: var(--font-mono); color: #475569; font-size: 0.8rem;">${item.date}</td>
+                        <td style="font-family: var(--font-mono); color: #334155; font-weight: 500;">${item.amount}</td>
+                        <td style="font-family: var(--font-mono); color: #64748B;">${item.currencySym || '¥'}${item.floorPrice}</td>
+                        <td style="font-family: var(--font-mono); font-weight: 700; color: #0F172A;">${dealStr}</td>
+                        <td style="font-family: var(--font-mono); font-weight: 600; color: #059669;">${diffStr}</td>
+                        <td>${rateStr}</td>
+                        <td style="text-align: center;">${statusBadge}</td>
+                        <td style="color: var(--text-muted); font-size: 0.76rem; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.location}">${item.location || '买方指定的甘其毛都口岸海关监管区'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function exportFilteredTableExcel() {
+            const filtered = getFilteredTableData();
+            if (!filtered || filtered.length === 0) {
+                alert('当前筛选条件下没有数据可供导出！');
+                return;
+            }
+
+            if (typeof XLSX === 'undefined') {
+                alert('未加载 SheetJS (XLSX) 库，无法导出 Excel！');
+                return;
+            }
+
+            const exportData = filtered.map((item, idx) => ({
+                '序号': idx + 1,
+                '煤种类型': item.product,
+                '卖方机构': item.seller,
+                '拍卖日期与时间': item.date,
+                '挂牌数量': item.amount,
+                '挂牌底价': item.floorPrice,
+                '成交价格': item.isUnsold ? '流拍' : (item.hasDealt ? item.dealPrice : '待出价'),
+                '每吨溢价': item.isUnsold ? '-' : (item.hasDealt ? item.diff : '-'),
+                '溢价率': item.rateStr || '-',
+                '成交状态': item.isUnsold ? '流拍' : (item.hasDealt ? '已成交' : '待出价'),
+                '币种': item.currency || 'CNY',
+                '运输方式': item.transport || '',
+                '供货与交付地点': item.location || ''
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "蒙古煤炭拍卖明细");
+
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const prodLabel = tableSelectedProduct === 'ALL' ? '全品类' : tableSelectedProduct;
+            XLSX.writeFile(wb, `蒙古煤炭拍卖数据_${prodLabel}_${todayStr}.xlsx`);
+        }
+
+
+        // ==========================================
+        // 交互辅助：手动选择 Excel / JSON 与拖拽支持
+        // ==========================================
+        function triggerFileInput() {
+            document.getElementById('excel-file-input').click();
+        }
+
+        function triggerJsonInput() {
+            const input = document.getElementById('json-file-input');
+            if (input) input.click();
+        }
+
+        function handleManualFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            readSelectedFile(file);
+        }
+
+        function handleManualJsonSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            readSelectedJsonFile(file);
+            e.target.value = '';
+        }
+
+        function readSelectedFile(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const arrayBuffer = e.target.result;
+                parseExcelArrayBuffer(arrayBuffer, `手动载入《${file.name}》`);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function readSelectedJsonFile(file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data && Array.isArray(data['数据清单'])) {
+                        todayAuctionJsonData = data;
+                        try {
+                            localStorage.setItem(STORAGE_KEY_TODAY_JSON, JSON.stringify(data));
+                        } catch (err) { }
+                        renderTodayAuctionsTable(currentRecords);
+                        const statusBadge = document.getElementById('sync-status');
+                        if (statusBadge) {
+                            statusBadge.textContent = `🟢 已载入今日 JSON (${data.总场次 || data['数据清单'].length} 场)`;
+                        }
+                    } else {
+                        alert('JSON 格式不符：未包含“数据清单”数组字段');
+                    }
+                } catch (err) {
+                    alert('解析 JSON 失败: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function setupDragAndDrop() {
+            window.addEventListener('dragover', e => e.preventDefault());
+            window.addEventListener('drop', e => {
+                e.preventDefault();
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const file = e.dataTransfer.files[0];
+                    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                        readSelectedFile(file);
+                    } else if (file.name.endsWith('.json')) {
+                        readSelectedJsonFile(file);
+                    }
+                }
+            });
+        }
+
+        // 默认内置降级快照（防离线完全空白）
+        function loadFallbackData() {
+            const fallback = [
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗精主焦煤",
+                    "卖方": "能源资源有限责任公司",
+                    "日期": "2026-08-27 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "CNY",
+                    "拍卖最低价": 1000,
+                    "成交价格每吨": 1340,
+                    "涨幅走势": "=(H2-G2)/G2",
+                    "供货时间": "2026 年 11 月 25 日（最后供货日） DAP 甘其毛都口岸",
+                    "供货地点": "买方指定的甘其毛都口岸海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗精主焦煤",
+                    "卖方": "能源资源有限责任公司",
+                    "日期": "2026-08-28 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "￥",
+                    "拍卖最低价": 1000,
+                    "成交价格每吨": 1405,
+                    "涨幅走势": "=(H3-G3)/G3",
+                    "供货时间": "2026 年 11 月 26 日（最后供货日） DAP 甘其毛都口岸",
+                    "供货地点": "买方指定的甘其毛都口岸海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗精主焦煤",
+                    "卖方": "能源资源有限责任公司",
+                    "日期": "2026-08-31 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "￥",
+                    "拍卖最低价": 1150,
+                    "成交价格每吨": 1515,
+                    "涨幅走势": "=(H4-G4)/G4",
+                    "供货时间": "2026 年 11 月 29 日（最后供货日） DAP 甘其毛都口岸",
+                    "供货地点": "买方指定的甘其毛都口岸海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗精主焦煤",
+                    "卖方": "能源资源有限责任公司",
+                    "日期": "2026-09-02 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "￥",
+                    "拍卖最低价": 1150,
+                    "成交价格每吨": 1405,
+                    "涨幅走势": "=(H5-G5)/G5",
+                    "供货时间": "2026 年 12 月 01 日（最后供货日） DAP 甘其毛都口岸",
+                    "供货地点": "买方指定的甘其毛都口岸海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗选半软焦煤",
+                    "卖方": "坎加德勘探 有限责任公司",
+                    "日期": "2026-09-01 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "￥",
+                    "拍卖最低价": 950,
+                    "成交价格每吨": 1205,
+                    "涨幅走势": "=(H6-G6)/G6",
+                    "供货时间": "2026 年 10 月 31 日（最后供货日） DAP 甘其毛都口岸",
+                    "供货地点": "买方指定的甘其毛都口岸海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "埃尔登内斯·塔万陶勒盖有限责任公司",
+                    "日期": "2026-08-27 10:00:00",
+                    "数量": "5 批量/32000吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 138,
+                    "成交价格每吨": 190.5,
+                    "涨幅走势": "=(H7-G7)/G7",
+                    "供货时间": "2/27/2027 /根据供应计划,在送货时间内完成供应/",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路， 铁路"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "埃尔登内斯·塔万陶勒盖有限责任公司",
+                    "日期": "2026-08-28 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 138,
+                    "成交价格每吨": 198.5,
+                    "涨幅走势": "=(H8-G8)/G8",
+                    "供货时间": "2/28/2027 /根据供应计划,在送货时间内完成供应/",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路， 铁路"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "埃尔登内斯·塔万陶勒盖有限责任公司",
+                    "日期": "2026-08-28 12:00:00",
+                    "数量": "10 批量/64000吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 138,
+                    "成交价格每吨": 194.5,
+                    "涨幅走势": "=(H9-G9)/G9",
+                    "供货时间": "2/28/2027 /根据供应计划,在送货时间内完成供应/",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路， 铁路"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "塔万陶勒盖股份公司",
+                    "日期": "2026-09-02 14:00:00",
+                    "数量": "8 批量/51200吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 160,
+                    "成交价格每吨": 212.5,
+                    "涨幅走势": "=(H10-G10)/G10",
+                    "供货时间": "2026-11-20 (DAP Ganqimaodu)",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "塔万陶勒盖股份公司",
+                    "日期": "2026-09-02 11:00:00",
+                    "数量": "8 批量/51200吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 160,
+                    "成交价格每吨": 211.5,
+                    "涨幅走势": "=(H11-G11)/G11",
+                    "供货时间": "2026-11-20 (DAP Ganqimaodu)",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗选半软焦煤",
+                    "卖方": "埃尔登内斯·塔万陶勒盖有限责任公司",
+                    "日期": "2026-09-03 10:00:00",
+                    "数量": "10 批量/64000吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 171.4,
+                    "成交价格每吨": 171.4,
+                    "涨幅走势": "=(H12-G12)/G12",
+                    "供货时间": "3/3/2027 /根据供应计划,在送货时间内完成 供应/",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路， 铁路"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "塔万陶勒盖股份公司",
+                    "日期": "2026-09-04 14:00:00",
+                    "数量": "32 批量/204800吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 160,
+                    "成交价格每吨": 208.5,
+                    "涨幅走势": "=(H13-G13)/G13",
+                    "供货时间": "2027-02-28 (DAP Ganqimaodu)",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "塔万陶勒盖股份公司",
+                    "日期": "2026-09-04 10:00:00",
+                    "数量": "32 批量/204800吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 160,
+                    "成交价格每吨": 210.5,
+                    "涨幅走势": "=(H14-G14)/G14",
+                    "供货时间": "2027-02-28 (DAP Ganqimaodu)",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "埃尔登内斯·塔万陶勒盖有限责任公司",
+                    "日期": "2026-09-04 10:00:00",
+                    "数量": "10 批量/64000吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 187.5,
+                    "成交价格每吨": 188,
+                    "涨幅走势": "=(H15-G15)/G15",
+                    "供货时间": "3/4/2027 /根据供应计划,在送货时间内完成 供应/",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路， 铁路"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗精主焦煤",
+                    "卖方": "能源资源有限责任公司",
+                    "日期": "2026-09-04 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "￥",
+                    "拍卖最低价": 1150,
+                    "成交价格每吨": 1445,
+                    "涨幅走势": "=(H16-G16)/G16",
+                    "供货时间": "2026 年 12 月 03 日（最后供货日） DAP 甘其毛都口岸",
+                    "供货地点": "买方指定的甘其毛都口岸海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "中挥发份性焦煤",
+                    "卖方": "埃尔登内斯·塔万陶勒盖有限责任公司",
+                    "日期": "2026-09-07 10:00:00",
+                    "数量": "5 批量/32000吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 187.5,
+                    "成交价格每吨": 197,
+                    "涨幅走势": "=(H17-G17)/G17",
+                    "供货时间": "3/7/2027 /根据供应计划,在送货时间内完成\n供应/",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路， 铁路"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗精主焦煤",
+                    "卖方": "能源资源有限责任公司",
+                    "日期": "2026-09-07 10:00:00",
+                    "数量": "2 批量/12800吨/",
+                    "币种": "￥",
+                    "拍卖最低价": 1150,
+                    "成交价格每吨": 1455,
+                    "涨幅走势": "=(H18-G18)/G18",
+                    "供货时间": "2026 年 12 月 06 日（最后供货日）\nDAP 甘其毛都口岸",
+                    "供货地点": "买方指定的甘其毛都口岸海关监管区",
+                    "运输方式": "公路运输"
+                },
+                {
+                    "产品": "煤炭",
+                    "产品类型": "洗选半软焦煤",
+                    "卖方": "埃尔登内斯·塔万陶勒盖有限责任公司",
+                    "日期": "2026-09-07 12:00:00",
+                    "数量": "10 批量/64000吨/",
+                    "币种": "USD",
+                    "拍卖最低价": 171.4,
+                    "成交价格每吨": 0,
+                    "涨幅走势": "=(H19-G19)/G19",
+                    "供货时间": "3/7/2027 /根据供应计划,在送货时间内完成\n供应/",
+                    "供货地点": "供应商送到买方指定的中国甘其毛都口岸的海关监管区",
+                    "运输方式": "公路， 铁路"
+                }
+            ];
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(fallback);
+            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+            const ab = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            parseExcelArrayBuffer(ab, '已载入内置初始快照');
+        }
+
+        // ==========================================
+        // 导出长图
+        // ==========================================
+        function exportReportImage() {
+            const el = document.getElementById('capture-dashboard');
+            const btn = event.currentTarget;
+            btn.innerHTML = '正在生成...';
+            btn.disabled = true;
+
+            html2canvas(el, {
+                backgroundColor: '#F8FAFC',
+                scale: 2,
+                useCORS: true
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `Mongolia_Coal_Auction_Excel_${new Date().toISOString().slice(0, 10)}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                btn.innerHTML = '<span>保存长图</span>';
+                btn.disabled = false;
+            }).catch(err => {
+                console.error(err);
+                alert('导出长图失败，请重试');
+                btn.innerHTML = '<span>保存长图</span>';
+                btn.disabled = false;
+            });
+        }
+    </script>
+</body>
+
+</html>

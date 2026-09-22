@@ -1,0 +1,54 @@
+name: Daily Mongolian Coal Auction Sync
+
+on:
+  schedule:
+    # 每天北京时间 16:30 自动执行 (对应 UTC 08:30)
+    - cron: '30 8 * * *'
+  workflow_dispatch: # 支持在 GitHub Actions 网页端随时手动一键触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 赋予 Actions 将更新后的 .db、js、xlsx 推回仓库的权限
+
+    steps:
+      - name: 检出代码 (包含历史数据与数据库)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 配置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 安装依赖包
+        run: |
+          pip install -r requirements.txt
+
+      - name: 执行每日全自动同步与关联
+        run: |
+          python3 run_daily_sync.py
+
+      - name: 自动同步 index.html (若模板有更新)
+        run: |
+          cp mongolia_coal_auction.html index.html
+
+      - name: 检查数据变动并自动回写持久化至 Git 仓库
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # 暂存数据目录与入口
+          git add data/ index.html
+          
+          # 判断是否有更新提交，附带 [skip ci] 避免重复触发
+          if ! git diff-index --quiet HEAD; then
+            echo "检测到数据更新，正在提交并回写仓库..."
+            git commit -m "chore(data): auto-sync daily auction records $(date +'%Y-%m-%d') [skip ci]"
+            git push
+          else
+            echo "数据已是最新，无需提交。"
+          fi
