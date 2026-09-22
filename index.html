@@ -1374,10 +1374,10 @@
         // ==========================================
         // 本地缓存持久化机制（彻底解决页面刷新数据丢失问题）
         // ==========================================
-        const STORAGE_KEY_RECORDS = 'mongolia_coal_auction_records_v1';
-        const STORAGE_KEY_TODAY_JSON = 'mongolia_coal_auction_today_json_v1';
-        const STORAGE_KEY_SOURCE = 'mongolia_coal_auction_source_v1';
-        const STORAGE_KEY_TIME = 'mongolia_coal_auction_time_v1';
+        const STORAGE_KEY_RECORDS = 'mongolia_coal_auction_records_v2';
+        const STORAGE_KEY_TODAY_JSON = 'mongolia_coal_auction_today_json_v2';
+        const STORAGE_KEY_SOURCE = 'mongolia_coal_auction_source_v2';
+        const STORAGE_KEY_TIME = 'mongolia_coal_auction_time_v2';
 
         function restoreFromLocalStorage() {
             try {
@@ -1396,7 +1396,7 @@
                     const parsed = JSON.parse(cachedStr);
                     if (Array.isArray(parsed) && parsed.length > 0) {
                         // 自动校正修复：重新校准有效成交记录的溢价率，彻底解决历史缓存中 rate 均为 0 的问题
-                        currentRecords = parsed.map(r => {
+                        const normalized = parsed.map(r => {
                             if (r.hasDealt && !r.isUnsold && typeof r.dealPrice === 'number' && typeof r.floorPrice === 'number' && r.floorPrice > 0) {
                                 const accurateRate = Math.round(((r.dealPrice - r.floorPrice) / r.floorPrice) * 1000) / 10;
                                 r.rate = accurateRate;
@@ -1405,6 +1405,8 @@
                             }
                             return r;
                         });
+                        // 自动熔断去重
+                        currentRecords = deduplicateCoalRecords(normalized);
                         saveToLocalStorage(source);
                         renderAll(`${source} (刷新自动恢复)`);
                         return true;
@@ -1559,6 +1561,43 @@
             }
         }
 
+        // 智能去重函数：严格防止同一场次因通告更新、起拍价变更产生重复幽灵条目
+        function deduplicateCoalRecords(records) {
+            if (!Array.isArray(records)) return [];
+            const dedupMap = new Map();
+            const isFinal = (item) => item.hasDealt || item.isUnsold || item.dealPrice === 0 || (typeof item.dealPrice === 'number' && item.dealPrice > 0);
+
+            records.forEach(r => {
+                const dateClean = (r.date || '').slice(0, 16);
+                const sellerClean = (r.seller || '').replace(/\s+/g, '');
+                const prodClean = (r.product || '').replace(/\s+/g, '');
+                let locClean = '';
+                if (r.location) {
+                    if (r.location.includes('甘其毛都')) locClean = '甘';
+                    else if (r.location.includes('满都拉')) locClean = '满';
+                    else if (r.location.includes('策克')) locClean = '策';
+                }
+                const key = `${dateClean}_${sellerClean}_${prodClean}_${locClean}`;
+
+                if (!dedupMap.has(key)) {
+                    dedupMap.set(key, r);
+                } else {
+                    const prev = dedupMap.get(key);
+                    if (!isFinal(prev) && isFinal(r)) {
+                        dedupMap.set(key, r);
+                    } else if (isFinal(prev) && !isFinal(r)) {
+                        // 保持终态不变
+                    } else {
+                        dedupMap.set(key, r);
+                    }
+                }
+            });
+
+            const res = Array.from(dedupMap.values());
+            res.forEach((item, idx) => { item.id = idx + 1; });
+            return res;
+        }
+
         // 通用核心清洗函数：处理原始数据对象列表（无论是来自 SQLite 导出的 JS、还是 Excel 解析）
         function loadRecordsFromRawObjects(rawRows, sourceDesc) {
             try {
@@ -1579,7 +1618,7 @@
                 }
 
                 // 标准化清洗转换
-                currentRecords = validRows.map((row, idx) => {
+                const mappedRecords = validRows.map((row, idx) => {
                     const product = String(row['产品类型'] || row['产品'] || '焦煤').trim();
                     const rawDate = row['日期'];
                     const dateStr = formatExcelDate(rawDate);
@@ -1666,6 +1705,9 @@
                         location: String(row['供货地点'] || '甘其毛都口岸海关监管区').trim().replace('\n', ' ')
                     };
                 });
+
+                // 核心去重熔断机制：彻底消除重复通告
+                currentRecords = deduplicateCoalRecords(mappedRecords);
 
                 // 同步持久化至本地缓存
                 saveToLocalStorage(sourceDesc);
