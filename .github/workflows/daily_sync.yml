@@ -2,8 +2,8 @@ name: Daily Mongolian Coal Auction Sync
 
 on:
   schedule:
-    # 每天北京时间 09:00 至 17:00，每间隔 1 小时执行一次 (对应 UTC 01:00 - 09:00 整点)
-    - cron: '0 1-9 * * *'
+    # 每天北京时间 09:15 至 17:15，每间隔 1 小时执行一次 (对应 UTC 01:15 - 09:15，避开整点拥堵)
+    - cron: '15 1-9 * * *'
   workflow_dispatch: # 支持在 GitHub Actions 网页端随时手动一键触发
 
 jobs:
