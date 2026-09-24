@@ -18,7 +18,7 @@
     <!-- html2canvas 用于报告长图导出 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- 本地离线直连数据源 (由 db_manager.py 自动从 SQLite 导出至 data/ 目录，支持 file:// 协议零跨域秒开) -->
-    <script src="./data/auction_data.js"></script>
+    <script src="./data/auction_data.js?v=20260924_v3"></script>
 
     <style>
         :root {
@@ -1374,16 +1374,27 @@
         // ==========================================
         // 本地缓存持久化机制（彻底解决页面刷新数据丢失问题）
         // ==========================================
-        const STORAGE_KEY_RECORDS = 'mongolia_coal_auction_records_v2';
-        const STORAGE_KEY_TODAY_JSON = 'mongolia_coal_auction_today_json_v2';
-        const STORAGE_KEY_SOURCE = 'mongolia_coal_auction_source_v2';
-        const STORAGE_KEY_TIME = 'mongolia_coal_auction_time_v2';
+        const STORAGE_KEY_RECORDS = 'mongolia_coal_auction_records_v3';
+        const STORAGE_KEY_TODAY_JSON = 'mongolia_coal_auction_today_json_v3';
+        const STORAGE_KEY_SOURCE = 'mongolia_coal_auction_source_v3';
+        const STORAGE_KEY_TIME = 'mongolia_coal_auction_time_v3';
+
+        function isExcludedProduct(prod) {
+            if (!prod) return false;
+            const s = String(prod).toLowerCase();
+            return s.includes('钼') || s.includes('鉬') || s.includes('fe-52%') || s.includes('动力煤') || s.includes('不粘结煤') || s.includes('washed non-coking coal');
+        }
 
         function restoreFromLocalStorage() {
             try {
                 const cachedTodayStr = localStorage.getItem(STORAGE_KEY_TODAY_JSON);
                 if (cachedTodayStr) {
-                    todayAuctionJsonData = JSON.parse(cachedTodayStr);
+                    const parsed = JSON.parse(cachedTodayStr);
+                    if (parsed && Array.isArray(parsed['数据清单'])) {
+                        parsed['数据清单'] = parsed['数据清单'].filter(item => !isExcludedProduct(item['产品类型'] || item['产品'] || item['品名']));
+                        parsed['总场次'] = parsed['数据清单'].length;
+                    }
+                    todayAuctionJsonData = parsed;
                 }
             } catch (e) {
                 console.warn('恢复今日 JSON 缓存失败:', e);
@@ -1405,8 +1416,9 @@
                             }
                             return r;
                         });
-                        // 自动熔断去重
-                        currentRecords = deduplicateCoalRecords(normalized);
+                        // 自动熔断去重与排除非煤产品
+                        const filtered = normalized.filter(r => !isExcludedProduct(r.product));
+                        currentRecords = deduplicateCoalRecords(filtered);
                         saveToLocalStorage(source);
                         renderAll(`${source} (刷新自动恢复)`);
                         return true;
@@ -1605,9 +1617,10 @@
                     throw new Error('未检测到有效数据行');
                 }
 
-                // 严格过滤全空行
+                // 严格过滤全空行与排除非煤品类
                 const validRows = rawRows.filter(row => {
                     const prod = String(row['产品类型'] || row['产品'] || '').trim();
+                    if (isExcludedProduct(prod)) return false;
                     const d = row['日期'];
                     const floor = row['拍卖最低价'];
                     return prod !== '' || (d !== undefined && d !== null && d !== '') || (floor !== undefined && floor !== null && floor !== '');
@@ -1933,7 +1946,8 @@
             if (todayAuctionJsonData && Array.isArray(todayAuctionJsonData['数据清单']) && todayAuctionJsonData['数据清单'].length > 0) {
                 isFromJson = true;
                 targetDateStr = todayAuctionJsonData['日期'] || '2026-09-11';
-                todayItems = todayAuctionJsonData['数据清单'].map((row, idx) => {
+                const filteredDataList = todayAuctionJsonData['数据清单'].filter(row => !isExcludedProduct(row['产品类型'] || row['产品'] || row['品名']));
+                todayItems = filteredDataList.map((row, idx) => {
                     const timeStr = String(row['拍卖时间'] || '').trim();
                     const fullDate = timeStr ? `${targetDateStr} ${timeStr}` : targetDateStr;
                     const product = String(row['产品类型'] || row['产品'] || '焦煤').trim();
