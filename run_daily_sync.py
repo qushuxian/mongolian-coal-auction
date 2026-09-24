@@ -126,19 +126,27 @@ EXCLUDED_PRODUCT_TYPES = {
     "fe-52%",
     "动力煤",
     "动力煤 /烟煤, 不粘结煤/",
-    "washed non-coking coal"
+    "washed non-coking coal",
+    "钼含量不低于44%的钼精矿",
 }
 
 def is_excluded_product_type(prod_type):
     """
-    判断是否属于需要排除的产品类型（如 Fe-52%、动力煤 /烟煤, 不粘结煤/）
+    判断是否属于需要排除的产品类型（如 Fe-52%、动力煤 /烟煤, 不粘结煤/、钼精矿等非炼焦煤品类）
     """
     if not prod_type:
         return False
     normalized = str(prod_type).strip().lower()
     if normalized in EXCLUDED_PRODUCT_TYPES:
         return True
-    return "fe-52%" in normalized or "动力煤" in normalized or "不粘结煤" in normalized or "washed non-coking coal" in normalized
+    return (
+        "fe-52%" in normalized
+        or "动力煤" in normalized
+        or "不粘结煤" in normalized
+        or "washed non-coking coal" in normalized
+        or "钼含量不低于44%的钼精矿" in normalized
+        or "钼精矿" in normalized
+    )
 
 def merge_frontend_records(auctions, notices):
     """
