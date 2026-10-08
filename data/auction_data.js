@@ -1,29 +1,12 @@
 // 蒙煤拍卖数据前端静态数据源 (由 db_manager.py 自动生成，支持 file:// 协议零拦截直接加载)
 window.COAL_AUCTION_DATA = {
-  "update_time": "2026-10-08 01:15:31",
-  "total_records": 63,
+  "update_time": "2026-10-08 09:54:58",
+  "total_records": 61,
   "today": {
     "日期": "2026-10-08",
-    "更新时间": "2026-10-08 01:15:31",
-    "总场次": 1,
-    "数据清单": [
-      {
-        "拍卖时间": "11:00",
-        "产品": "铁",
-        "产品类型": "Fe-65%",
-        "卖方": "Mongolrostsvetmet SOE /Erdenes Critical Minerals SOE/",
-        "状态": "尚未开始",
-        "数量": "1 批量/3300吨/",
-        "拍卖最低价": "85.00 USD",
-        "成交价格每吨": "-",
-        "拍卖价格涨幅走势": "0%",
-        "价格类型": "固定价格",
-        "供货时间": "2027年10月",
-        "供货地点": "二连浩特铁路站",
-        "运输方式": "铁路",
-        "查看具体信息": "https://mse.mn/uploads/auction_schedules/ch-c8857bf8-924b-4120-9bbe-95875755bb4f.pdf"
-      }
-    ]
+    "更新时间": "2026-10-08 09:54:58",
+    "总场次": 0,
+    "数据清单": []
   },
   "records": [
     {
@@ -927,21 +910,6 @@ window.COAL_AUCTION_DATA = {
       "查看具体信息": "https://mse.mn/uploads/auction_schedules/ch-89914bd1-b02e-4255-a4d0-536ead413e58.pdf"
     },
     {
-      "产品": "铁",
-      "产品类型": "Fe-65%",
-      "卖方": "Mongolrostsvetmet SOE /Erdenes Critical Minerals SOE/",
-      "日期": "2026-10-06 11:00",
-      "数量": "1 批量/3300吨/",
-      "币种": "USD",
-      "拍卖最低价": 85.0,
-      "成交价格每吨": 90.0,
-      "供货时间": "2027年10月",
-      "供货地点": "二连浩特铁路站",
-      "运输方式": "铁路",
-      "状态": "已成交",
-      "查看具体信息": "https://mse.mn/uploads/auction_schedules/ch-dcdc6c33-eccd-47c4-a9fc-faa854ffda62.pdf"
-    },
-    {
       "产品": "煤炭",
       "产品类型": "洗精主焦煤",
       "卖方": "能源资源有限责任公司",
@@ -955,21 +923,6 @@ window.COAL_AUCTION_DATA = {
       "运输方式": "公路运输",
       "状态": "已成交",
       "查看具体信息": "https://mse.mn/uploads/auction_schedules/ch-fd65fbcc-faf4-437d-adbf-c32367fdffea.pdf"
-    },
-    {
-      "产品": "铁",
-      "产品类型": "Fe-65%",
-      "卖方": "Mongolrostsvetmet SOE /Erdenes Critical Minerals SOE/",
-      "日期": "2026-10-08 11:00",
-      "数量": "1 批量/3300吨/",
-      "币种": "USD",
-      "拍卖最低价": 85.0,
-      "成交价格每吨": "-",
-      "供货时间": "2027年10月",
-      "供货地点": "二连浩特铁路站",
-      "运输方式": "铁路",
-      "状态": "尚未开始",
-      "查看具体信息": "https://mse.mn/uploads/auction_schedules/ch-c8857bf8-924b-4120-9bbe-95875755bb4f.pdf"
     }
   ]
 };

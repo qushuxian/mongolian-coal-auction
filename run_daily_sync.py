@@ -124,6 +124,8 @@ def extract_pdf_delivery_info(pdf_url):
 
 EXCLUDED_PRODUCT_TYPES = {
     "fe-52%",
+    "fe-65%",
+    "Fe-65%",
     "动力煤",
     "动力煤 /烟煤, 不粘结煤/",
     "washed non-coking coal",
@@ -146,6 +148,7 @@ def is_excluded_product_type(prod_type):
         or "washed non-coking coal" in normalized
         or "钼含量不低于44%的钼精矿" in normalized
         or "钼精矿" in normalized
+        or "fe-65%" in normalized
     )
 
 def merge_frontend_records(auctions, notices):
