@@ -18,7 +18,7 @@
     <!-- html2canvas 用于报告长图导出 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- 本地离线直连数据源 (由 db_manager.py 自动从 SQLite 导出至 data/ 目录，支持 file:// 协议零跨域秒开) -->
-    <script src="./data/auction_data.js?v=20260924_v3"></script>
+    <script src="./data/auction_data.js"></script>
 
     <style>
         :root {
@@ -1335,6 +1335,23 @@
         let quantityViewMode = 'daily'; // 'daily' | 'session'
         let quantityIsStacked = false;
 
+        // 核心界面联动刷新：当底层数据变更（如合并今日成交价）时，驱动全量图表与台账视图重新计算并呈现
+        function refreshUIAfterDataUpdate() {
+            updateMidCokingChart();
+            updateWashedCokingChart();
+            updateSemiSoftCokingChart();
+            if (typeof currentPriceTrendTab !== 'undefined') {
+                const tabEl = document.getElementById(`tab-coal-${currentPriceTrendTab}`);
+                if (tabEl) switchPriceTrendTab(currentPriceTrendTab, tabEl);
+            }
+            updateQuantityTrendChart();
+            updateAllRatesTabs();
+            updateAllRatesChart();
+            renderTodayAuctionsTable(currentRecords);
+            initTableControls(currentRecords);
+            renderUnifiedTable();
+        }
+
         // 页面初始化：优先直接从 SQLite 导出的全局数据源 (auction_data.js) 直连载入，零延迟且无跨域限制
         window.addEventListener('DOMContentLoaded', () => {
             initChartInstances();
@@ -1345,6 +1362,16 @@
                     todayAuctionJsonData = window.COAL_AUCTION_DATA.today;
                 }
                 loadRecordsFromRawObjects(window.COAL_AUCTION_DATA.records, `SQLite 数据库直连 (${window.COAL_AUCTION_DATA.update_time || '最新'})`);
+                // 确保今日 JSON 数据与 currentRecords 终态完全合流
+                if (todayAuctionJsonData) {
+                    syncTodayDataIntoCurrentRecords(todayAuctionJsonData);
+                    initTableControls(currentRecords);
+                    renderUnifiedTable();
+                }
+                // 在 HTTP/在线托管环境下，主动异步静默拉取今日最新 JSON，确保无需手动刷新即获成交最新态
+                if (window.location.protocol !== 'file:') {
+                    loadDailyAuctionJson();
+                }
             } else {
                 // 降级兜底：尝试从本地缓存或 Excel 恢复
                 const hasRestored = restoreFromLocalStorage();
@@ -1430,6 +1457,141 @@
             return false;
         }
 
+        // 核心联动：将今日最新拍卖/成交 JSON 数据精准同步融合至全量 currentRecords 数据池中
+        function syncTodayDataIntoCurrentRecords(todayData) {
+            if (!todayData || !Array.isArray(todayData['数据清单']) || todayData['数据清单'].length === 0) {
+                return false;
+            }
+            const targetDate = String(todayData['日期'] || '').trim();
+            if (!targetDate) return false;
+
+            let changed = false;
+            const todayList = todayData['数据清单'].filter(row => !isExcludedProduct(row['产品类型'] || row['产品'] || row['品名']));
+
+            todayList.forEach(row => {
+                const timeStr = String(row['拍卖时间'] || '').trim();
+                const fullDate = timeStr ? `${targetDate} ${timeStr}` : targetDate;
+                const product = String(row['产品类型'] || row['产品'] || '焦煤').trim();
+                const seller = String(row['卖方'] || '-').trim();
+                const amount = String(row['数量'] || '-').trim();
+                const tons = parseQuantityTons(amount);
+                const wanTons = +(tons / 10000).toFixed(2);
+
+                const rawFloor = String(row['拍卖最低价'] || '').trim();
+                const rawDeal = String(row['成交价格每吨'] || '').trim();
+                const status = String(row['状态'] || '').trim();
+
+                let currency = 'CNY';
+                let sym = '¥';
+                if (rawFloor.toUpperCase().includes('USD') || rawDeal.toUpperCase().includes('USD') || rawFloor.includes('$') || rawDeal.includes('$')) {
+                    currency = 'USD';
+                    sym = '$';
+                }
+
+                const floorPrice = parseFloat(rawFloor.replace(/[^0-9.]/g, '')) || 0;
+                let hasDealt = false;
+                let isUnsold = false;
+                let dealPrice = null;
+                let diff = null;
+                let rateVal = null;
+                let rateStr = '⚡ 竞价中';
+
+                if (status.includes('流拍') || rawDeal === '0' || rawDeal === '0.00' || rawDeal.includes('流拍') || rawDeal.includes('未提交报价')) {
+                    isUnsold = true;
+                    hasDealt = false;
+                    dealPrice = 0;
+                    diff = null;
+                    rateVal = null;
+                    rateStr = '🚫 流拍';
+                } else if (rawDeal !== '' && rawDeal !== '-' && rawDeal.toLowerCase() !== 'null' && rawDeal.toLowerCase() !== 'none') {
+                    const numDeal = parseFloat(rawDeal.replace(/[^0-9.]/g, ''));
+                    if (!isNaN(numDeal) && numDeal > 0) {
+                        hasDealt = true;
+                        isUnsold = false;
+                        dealPrice = numDeal;
+                        diff = (dealPrice - floorPrice).toFixed(1);
+                        if (floorPrice > 0) {
+                            rateVal = Math.round(((dealPrice - floorPrice) / floorPrice) * 1000) / 10;
+                        }
+                        rateStr = rateVal !== null ? (rateVal === 0 ? '0%' : (rateVal > 0 ? `+${rateVal}%` : `${rateVal}%`)) : '+0.0%';
+                    }
+                }
+
+                const dateClean = fullDate.slice(0, 16);
+                const sellerClean = seller.replace(/\s+/g, '');
+                const prodClean = product.replace(/\s+/g, '');
+
+                let match = currentRecords.find(r => {
+                    const rDate = (r.date || '').slice(0, 16);
+                    const rSeller = (r.seller || '').replace(/\s+/g, '');
+                    const rProd = (r.product || '').replace(/\s+/g, '');
+                    return rDate === dateClean && rSeller === sellerClean && rProd === prodClean;
+                });
+
+                if (!match) {
+                    match = currentRecords.find(r => {
+                        const rDate = (r.date || '').slice(0, 10);
+                        const rSeller = (r.seller || '').replace(/\s+/g, '');
+                        const rProd = (r.product || '').replace(/\s+/g, '');
+                        return rDate === targetDate && rSeller === sellerClean && (rProd === prodClean || rProd.includes(prodClean) || prodClean.includes(rProd));
+                    });
+                }
+
+                const deliveryTime = String(row['供货时间'] || '').trim();
+                const transport = String(row['运输方式'] || '公路运输').trim();
+                const location = String(row['供货地点'] || '买方指定的甘其毛都口岸海关监管区').trim().replace(/\n/g, ' ');
+
+                if (match) {
+                    if (hasDealt || isUnsold || (match.dealPrice === null && dealPrice !== null) || match.status !== status) {
+                        match.floorPrice = floorPrice;
+                        match.dealPrice = dealPrice;
+                        match.hasDealt = hasDealt;
+                        match.isUnsold = isUnsold;
+                        match.diff = diff;
+                        match.rate = rateVal;
+                        match.rateStr = rateStr;
+                        match.status = status;
+                        if (deliveryTime) match.deliveryTime = deliveryTime;
+                        if (location) match.location = location;
+                        if (transport) match.transport = transport;
+                        changed = true;
+                    }
+                } else {
+                    currentRecords.push({
+                        id: currentRecords.length + 1,
+                        product: product,
+                        seller: seller,
+                        date: fullDate,
+                        amount: amount,
+                        tons: tons,
+                        wanTons: wanTons,
+                        rawCurrency: currency,
+                        currency: currency,
+                        currencySym: sym,
+                        floorPrice: floorPrice,
+                        dealPrice: dealPrice,
+                        hasDealt: hasDealt,
+                        isUnsold: isUnsold,
+                        diff: diff,
+                        rate: rateVal,
+                        rateStr: rateStr,
+                        status: status,
+                        deliveryTime: deliveryTime,
+                        transport: transport,
+                        location: location
+                    });
+                    changed = true;
+                }
+            });
+
+            if (changed) {
+                currentRecords.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+                currentRecords.forEach((r, idx) => { r.id = idx + 1; });
+                saveToLocalStorage('今日实时数据联动');
+            }
+            return changed;
+        }
+
         // 异步获取 data/daily_auction_merged.json
         async function loadDailyAuctionJson() {
             const fetchUrl = `./data/daily_auction_merged.json?_t=${Date.now()}`;
@@ -1445,7 +1607,10 @@
                         localStorage.setItem(STORAGE_KEY_TODAY_JSON, JSON.stringify(data));
                     } catch (e) { }
                     console.log('成功读取今日拍卖 JSON 数据:', data);
-                    renderTodayAuctionsTable(currentRecords);
+
+                    // 核心联动：将今日最新成交价同步融合至 currentRecords，驱动全量台账与趋势图联动更新
+                    syncTodayDataIntoCurrentRecords(data);
+                    refreshUIAfterDataUpdate();
                 }
             } catch (err) {
                 console.warn('自动获取 daily_auction_merged.json 失败 (提示: 若通过 file:// 协议打开受浏览器限制，可点击【载入今日 JSON】或拖入):', err);
@@ -4005,10 +4170,14 @@
                         try {
                             localStorage.setItem(STORAGE_KEY_TODAY_JSON, JSON.stringify(data));
                         } catch (err) { }
-                        renderTodayAuctionsTable(currentRecords);
+
+                        // 核心联动：将今日最新成交价同步写入全量 currentRecords，联动更新台账与图表
+                        syncTodayDataIntoCurrentRecords(data);
+                        refreshUIAfterDataUpdate();
+
                         const statusBadge = document.getElementById('sync-status');
                         if (statusBadge) {
-                            statusBadge.textContent = `🟢 已载入今日 JSON (${data.总场次 || data['数据清单'].length} 场)`;
+                            statusBadge.textContent = `🟢 已载入今日 JSON (${data.总场次 || data['数据清单'].length} 场 · 台账已联动更新)`;
                         }
                     } else {
                         alert('JSON 格式不符：未包含“数据清单”数组字段');

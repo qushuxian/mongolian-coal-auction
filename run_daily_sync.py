@@ -151,13 +151,15 @@ def is_excluded_product_type(prod_type):
         or "fe-65%" in normalized
     )
 
-def merge_frontend_records(auctions, notices):
+def merge_frontend_records(auctions, notices, existing_deals=None):
     """
     根据时间、卖方、底价等维度将实时看板数据与通告数据关联，
     仅保留前端页面实际呈现的字段，并补充提取 PDF 中的交割条款。
+    同时支持继承已有数据库终态（已成交/流拍），防止收盘后清空看板导致成交价丢失。
     """
     merged_list = []
     used_notice_indices = set()
+    existing_deals = existing_deals or {}
 
     for a in auctions:
         a_time = normalize_time(a.get("auctionStartTime", ""))
@@ -203,12 +205,22 @@ def merge_frontend_records(auctions, notices):
         # 从公告 PDF 提取交割信息
         delivery = extract_pdf_delivery_info(notice_pdf_url)
 
+        # 终态继承保护：若看板当前无成交价，但数据库已有终态记录，则继承已有成交结果
+        seller_clean = re.sub(r'[^\w]', '', a.get("sellerNameCN") or (matched_notice.get("seller") if matched_notice else "") or "")
+        coal_clean = re.sub(r'[^\w]', '', prod_type or "")
+        match_key = f"{time_display[:5]}_{seller_clean}_{coal_clean}"
+        ex = existing_deals.get(match_key)
+
         status_code = a.get("auctionStatus")
-        # 官方 comex 页面中，当 auctionStatus == 3 且无成交价 (orderPrice 为空) 时，
-        # 页面《成交价格每吨》显示为“买方未提交报价”，即代表流拍；或状态码 4 为流拍
         is_unsold = (status_code == 3 and (deal_num is None or deal_num == 0 or deal_num == "")) or (status_code == 4)
 
-        status_display = "流拍" if is_unsold else format_status(status_code, deal_num)
+        if (deal_num is None or deal_num == 0 or deal_num == "") and ex and ex.get("deal_price") is not None:
+            deal_num = ex["deal_price"]
+            is_unsold = (deal_num == 0)
+            status_display = ex.get("status") or ("已成交" if deal_num > 0 else "流拍")
+        else:
+            status_display = "流拍" if is_unsold else format_status(status_code, deal_num)
+
         if deal_num is not None and deal_num > 0:
             deal_display = format_currency_display(deal_num, currency)
         elif is_unsold:
@@ -249,16 +261,33 @@ def merge_frontend_records(auctions, notices):
             notice_pdf_url = n.get("detailInfoUrl")
             delivery = extract_pdf_delivery_info(notice_pdf_url)
 
+            # 终态保护：检查是否收盘导致看板清空，但数据库中已有当天成交记录
+            seller_clean = re.sub(r'[^\w]', '', n.get("seller", "") or "")
+            coal_clean = re.sub(r'[^\w]', '', prod_type or "")
+            match_key = f"{time_display[:5]}_{seller_clean}_{coal_clean}"
+            ex = existing_deals.get(match_key)
+
+            if ex and ex.get("deal_price") is not None:
+                deal_val = ex["deal_price"]
+                is_unsold = (deal_val == 0)
+                status_display = ex.get("status") or ("已成交" if deal_val > 0 else "流拍")
+                deal_display = format_currency_display(deal_val, n_curr) if deal_val > 0 else "流拍"
+                trend_display = calculate_price_trend(deal_val, n_price, is_unsold=is_unsold)
+            else:
+                status_display = "通告已发布"
+                deal_display = "-"
+                trend_display = "0%"
+
             merged_list.append({
                 "拍卖时间": time_display,
                 "产品": n.get("product"),
                 "产品类型": prod_type,
                 "卖方": n.get("seller"),
-                "状态": "通告已发布",
+                "状态": status_display,
                 "数量": n.get("quantity"),
                 "拍卖最低价": format_currency_display(n_price, n_curr),
-                "成交价格每吨": "-",
-                "拍卖价格涨幅走势": "0%",
+                "成交价格每吨": deal_display,
+                "拍卖价格涨幅走势": trend_display,
                 "价格类型": n.get("priceType"),
                 "供货时间": delivery.get("供货时间", "-"),
                 "供货地点": delivery.get("供货地点", "-"),
@@ -494,9 +523,14 @@ def main():
     notices = get_today_notices(query_date)
     print(f"      -> 获取到 {len(notices)} 笔通告记录")
 
-    # 2. 进行数据 Join 关联（仅提取前端展示字段）
+    # 2. 查询已有数据库终态，防止收盘清空看板后覆盖已成交结果
+    existing_deals = db_manager.get_existing_deals_for_date(query_date)
+    if existing_deals:
+        print(f"      -> 检测到当前数据库已有 {len(existing_deals)} 笔终态记录，启用状态继承保护")
+
+    # 3. 进行数据 Join 关联（仅提取前端展示字段）
     print("[3/3] 正在进行双源数据智能 Join 关联，生成前端专属展示字段...")
-    frontend_records = merge_frontend_records(auctions, notices)
+    frontend_records = merge_frontend_records(auctions, notices, existing_deals=existing_deals)
 
     # 3. 构造输出 JSON 结构
     final_output = {

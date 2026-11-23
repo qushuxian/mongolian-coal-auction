@@ -147,17 +147,52 @@ def derive_status(status_raw: str, deal_price: Optional[float], raw_deal_str: st
     return status_text or "未知"
 
 
+def get_existing_deals_for_date(query_date: str, db_path: str = None) -> Dict[str, Dict[str, Any]]:
+    """
+    获取指定日期已存在的有效成交/终态记录映射字典，以防止后续同步时收盘清空看板导致成交数据被冲正抹除。
+    key: f"{auction_time}_{seller_clean}_{coal_type_clean}"
+    """
+    init_db(db_path)
+    conn = get_connection(db_path)
+    rows = conn.execute("""
+        SELECT * FROM coal_auctions 
+        WHERE auction_date = ? AND (deal_price IS NOT NULL OR status IN ('已成交', '流拍'))
+    """, (query_date,)).fetchall()
+    conn.close()
+
+    result = {}
+    for r in rows:
+        t = str(r["auction_time"] or "").strip()[:5]
+        s = re.sub(r'[^\w]', '', r["seller"] or "")
+        c = re.sub(r'[^\w]', '', r["coal_type"] or "")
+        key = f"{t}_{s}_{c}"
+        result[key] = dict(r)
+    return result
+
+
 def save_daily_auctions(query_date: str, items: List[Dict[str, Any]], db_path: str = None) -> int:
     """
     供 run_daily_sync.py 调用的主增量落库接口
-    执行 INSERT OR REPLACE 幂等保存当日拍卖数据
+    执行增量防冲正落库，严格保护已达终态（已成交/流拍）的数据不被空数据覆盖
     """
     init_db(db_path)
     conn = get_connection(db_path)
     saved_count = 0
 
     with conn:
-        # 先清除当日可能残留的旧快照/未匹配通告，确保全量幂等覆盖
+        # 查询当天已有具备终态（已成交/流拍）的记录字典，防止误覆盖
+        rows = conn.execute("""
+            SELECT * FROM coal_auctions 
+            WHERE auction_date = ? AND (deal_price IS NOT NULL OR status IN ('已成交', '流拍'))
+        """, (query_date,)).fetchall()
+        existing_deals = {}
+        for r in rows:
+            t = str(r["auction_time"] or "").strip()[:5]
+            s = re.sub(r'[^\w]', '', r["seller"] or "")
+            c = re.sub(r'[^\w]', '', r["coal_type"] or "")
+            existing_deals[f"{t}_{s}_{c}"] = dict(r)
+
+        # 先清除当日可能残留的旧快照/未匹配通告
         conn.execute("DELETE FROM coal_auctions WHERE auction_date = ?", (query_date,))
         for item in items:
             # 基础属性
@@ -198,6 +233,18 @@ def save_daily_auctions(query_date: str, items: List[Dict[str, Any]], db_path: s
                     rate = None
             elif deal_p is not None and floor_p > 0:
                 rate = round((deal_p - floor_p) / floor_p, 4)
+
+            # 🛡️ 终态保护机制：若新数据中 deal_p 为空但已有记录有成交价，则继承保护
+            s_clean = re.sub(r'[^\w]', '', seller)
+            c_clean = re.sub(r'[^\w]', '', coal_type)
+            match_key = f"{time_display[:5]}_{s_clean}_{c_clean}"
+            if match_key in existing_deals:
+                ex = existing_deals[match_key]
+                if deal_p is None and ex.get("deal_price") is not None:
+                    deal_p = ex["deal_price"]
+                    status = ex.get("status") or derive_status(item.get("状态", ""), deal_p, str(deal_p))
+                    if rate is None and ex.get("price_change_rate") is not None:
+                        rate = ex["price_change_rate"]
 
             # 条款与元数据
             price_type = item.get("价格类型", "")
