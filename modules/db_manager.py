@@ -131,6 +131,27 @@ def normalize_num(val: Any) -> Optional[float]:
     return None
 
 
+def is_excluded_product(*args) -> bool:
+    """判断是否为非煤排除品类（如 Fe-52%、Fe-65%、铜/铜精矿/铜含量为22.35%的铜精矿、动力煤、钼精矿等）"""
+    for arg in args:
+        if not arg:
+            continue
+        s = str(arg).strip().lower()
+        if (
+            "fe-52%" in s
+            or "fe-65%" in s
+            or "动力煤" in s
+            or "不粘结煤" in s
+            or "washed non-coking coal" in s
+            or "钼" in s
+            or "铜" in s
+            or "copper" in s
+            or "22.35%" in s
+        ):
+            return True
+    return False
+
+
 def derive_status(status_raw: str, deal_price: Optional[float], raw_deal_str: str = "") -> str:
     """根据状态文本和成交价推导统一的状态标签"""
     status_text = str(status_raw or "").strip()
@@ -198,6 +219,8 @@ def save_daily_auctions(query_date: str, items: List[Dict[str, Any]], db_path: s
             # 基础属性
             prod = item.get("产品", "煤炭") or "煤炭"
             coal_type = item.get("产品类型", "") or ""
+            if is_excluded_product(coal_type, prod):
+                continue
             seller = item.get("卖方", "") or ""
             raw_time = str(item.get("拍卖时间", "10:00")).strip()
             time_display = raw_time if raw_time else "10:00"
@@ -304,8 +327,10 @@ def migrate_from_excel(excel_path: str = None, db_path: str = None) -> int:
         delivery_loc = sheet.cell(r, 11).value
         transport = sheet.cell(r, 12).value
 
-        # 跳过完全空行
+        # 跳过完全空行或非煤品类
         if not coal_type and not seller and not date_val:
+            continue
+        if is_excluded_product(coal_type, product):
             continue
 
         # 解析日期与时间
@@ -389,6 +414,7 @@ def export_to_excel(output_path: str = None, db_path: str = None) -> str:
     conn = get_connection(db_path)
     rows = conn.execute("""
         SELECT * FROM coal_auctions 
+        WHERE product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'
         ORDER BY auction_date ASC, auction_time ASC, id ASC
     """).fetchall()
     conn.close()
@@ -475,18 +501,19 @@ def export_to_excel(output_path: str = None, db_path: str = None) -> str:
 
 
 def get_summary_stats(db_path: str = None) -> Dict[str, Any]:
-    """获取数据库全局统计指标"""
+    """获取数据库全局统计指标（严格排除非煤品类）"""
     init_db(db_path)
     conn = get_connection(db_path)
     
-    total_records = conn.execute("SELECT COUNT(*) FROM coal_auctions").fetchone()[0]
-    date_range = conn.execute("SELECT MIN(auction_date), MAX(auction_date) FROM coal_auctions").fetchone()
-    deal_count = conn.execute("SELECT COUNT(*) FROM coal_auctions WHERE deal_price > 0").fetchone()[0]
-    total_tons = conn.execute("SELECT SUM(tons) FROM coal_auctions").fetchone()[0] or 0.0
+    total_records = conn.execute("SELECT COUNT(*) FROM coal_auctions WHERE product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'").fetchone()[0]
+    date_range = conn.execute("SELECT MIN(auction_date), MAX(auction_date) FROM coal_auctions WHERE product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'").fetchone()
+    deal_count = conn.execute("SELECT COUNT(*) FROM coal_auctions WHERE deal_price > 0 AND product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'").fetchone()[0]
+    total_tons = conn.execute("SELECT SUM(tons) FROM coal_auctions WHERE product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'").fetchone()[0] or 0.0
 
     coal_types = conn.execute("""
         SELECT coal_type, COUNT(*), SUM(tons) 
         FROM coal_auctions 
+        WHERE product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'
         GROUP BY coal_type 
         ORDER BY COUNT(*) DESC
     """).fetchall()
@@ -494,6 +521,7 @@ def get_summary_stats(db_path: str = None) -> Dict[str, Any]:
     sellers = conn.execute("""
         SELECT seller, COUNT(*), SUM(tons) 
         FROM coal_auctions 
+        WHERE product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'
         GROUP BY seller 
         ORDER BY COUNT(*) DESC
     """).fetchall()
@@ -520,6 +548,7 @@ def export_frontend_data(output_path: str = None, db_path: str = None) -> str:
     
     rows = conn.execute("""
         SELECT * FROM coal_auctions 
+        WHERE product NOT LIKE '%铜%' AND coal_type NOT LIKE '%铜%' AND coal_type NOT LIKE '%22.35%'
         ORDER BY auction_date ASC, auction_time ASC, id ASC
     """).fetchall()
     
@@ -527,6 +556,17 @@ def export_frontend_data(output_path: str = None, db_path: str = None) -> str:
     today_json_path = os.path.join(DATA_DIR, "daily_auction_merged.json")
     today_data = None
     if os.path.exists(today_json_path):
+        try:
+            with open(today_json_path, "r", encoding="utf-8") as f:
+                today_data = json.load(f)
+            if today_data and isinstance(today_data.get("数据清单"), list):
+                today_data["数据清单"] = [
+                    it for it in today_data["数据清单"]
+                    if not is_excluded_product(it.get("产品类型"), it.get("产品"))
+                ]
+                today_data["总场次"] = len(today_data["数据清单"])
+        except Exception:
+            pass
         try:
             with open(today_json_path, "r", encoding="utf-8") as f:
                 today_data = json.load(f)

@@ -125,31 +125,40 @@ def extract_pdf_delivery_info(pdf_url):
 EXCLUDED_PRODUCT_TYPES = {
     "fe-52%",
     "fe-65%",
-    "Fe-65%",
+    "fe-65%",
     "动力煤",
     "动力煤 /烟煤, 不粘结煤/",
     "washed non-coking coal",
     "钼含量不低于44%的钼精矿",
+    "钼精矿",
+    "铜含量为22.35%的铜精矿",
+    "铜精矿",
+    "铜",
 }
 
-def is_excluded_product_type(prod_type):
+def is_excluded_product_type(*args):
     """
-    判断是否属于需要排除的产品类型（如 Fe-52%、动力煤 /烟煤, 不粘结煤/、钼精矿等非炼焦煤品类）
+    判断是否属于需要排除的产品类型（如 Fe-52%、Fe-65%、铜/铜精矿/铜含量为22.35%的铜精矿、动力煤、钼精矿等非炼焦煤品类）
     """
-    if not prod_type:
-        return False
-    normalized = str(prod_type).strip().lower()
-    if normalized in EXCLUDED_PRODUCT_TYPES:
-        return True
-    return (
-        "fe-52%" in normalized
-        or "动力煤" in normalized
-        or "不粘结煤" in normalized
-        or "washed non-coking coal" in normalized
-        or "钼含量不低于44%的钼精矿" in normalized
-        or "钼精矿" in normalized
-        or "fe-65%" in normalized
-    )
+    for arg in args:
+        if not arg:
+            continue
+        normalized = str(arg).strip().lower()
+        if normalized in EXCLUDED_PRODUCT_TYPES:
+            return True
+        if (
+            "fe-52%" in normalized
+            or "fe-65%" in normalized
+            or "动力煤" in normalized
+            or "不粘结煤" in normalized
+            or "washed non-coking coal" in normalized
+            or "钼" in normalized
+            or "铜" in normalized
+            or "copper" in normalized
+            or "22.35%" in normalized
+        ):
+            return True
+    return False
 
 def merge_frontend_records(auctions, notices, existing_deals=None):
     """
@@ -189,8 +198,9 @@ def merge_frontend_records(auctions, notices, existing_deals=None):
             used_notice_indices.add(matched_idx)
 
         prod_type = matched_notice.get("productType") if matched_notice else "-"
-        # 排除指定产品类型（如 Fe-52%）
-        if is_excluded_product_type(prod_type):
+        prod_name = a.get("productTypeNameCN") or a.get("productTypeNameMN") or (matched_notice.get("product") if matched_notice else "")
+        # 排除指定产品类型（如 Fe-52%、铜/铜精矿等）
+        if is_excluded_product_type(prod_type, prod_name):
             continue
 
         # 仅保留前端页面展示的字段信息
@@ -250,8 +260,9 @@ def merge_frontend_records(auctions, notices, existing_deals=None):
     for idx, n in enumerate(notices):
         if idx not in used_notice_indices:
             prod_type = n.get("productType")
-            # 排除指定产品类型（如 Fe-52%）
-            if is_excluded_product_type(prod_type):
+            prod_name = n.get("product")
+            # 排除指定产品类型（如 Fe-52%、铜/铜精矿等）
+            if is_excluded_product_type(prod_type, prod_name):
                 continue
 
             n_curr = "USD" if "$" in n.get("floorPrice", "") else ("CNY" if "¥" in n.get("floorPrice", "") else "")
@@ -296,7 +307,7 @@ def merge_frontend_records(auctions, notices, existing_deals=None):
             })
 
     # 双重保险：过滤掉排除的产品类型
-    merged_list = [item for item in merged_list if not is_excluded_product_type(item.get("产品类型"))]
+    merged_list = [item for item in merged_list if not is_excluded_product_type(item.get("产品类型"), item.get("产品"))]
 
     # 按拍卖时间升序排序
     merged_list.sort(key=lambda x: x.get("拍卖时间") or "")
