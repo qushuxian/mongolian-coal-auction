@@ -2626,12 +2626,36 @@
                     textStyle: { color: '#475569', fontSize: 11 },
                     top: 0
                 },
-                grid: { top: 45, bottom: 30, left: 50, right: 50 },
+                grid: { top: 45, bottom: dates.length > 15 ? 48 : 30, left: 50, right: 50 },
+                dataZoom: [
+                    {
+                        type: 'slider',
+                        show: dates.length > 15,
+                        xAxisIndex: 0,
+                        startValue: Math.max(0, dates.length - 25),
+                        endValue: dates.length - 1,
+                        height: 18,
+                        bottom: 4,
+                        borderColor: 'transparent',
+                        backgroundColor: '#F1F5F9',
+                        fillerColor: 'rgba(217, 119, 6, 0.18)',
+                        handleSize: '100%',
+                        handleStyle: { color: '#D97706' },
+                        textStyle: { color: '#64748B', fontSize: 10 }
+                    },
+                    {
+                        type: 'inside',
+                        xAxisIndex: 0,
+                        zoomOnMouseWheel: true,
+                        moveOnMouseMove: true,
+                        moveOnMouseWheel: true
+                    }
+                ],
                 xAxis: {
                     type: 'category',
                     data: dates,
                     axisLine: { lineStyle: { color: '#CBD5E1' } },
-                    axisLabel: { color: '#475569', fontSize: 11 }
+                    axisLabel: { color: '#475569', fontSize: 11, interval: 'auto', hideOverlap: true }
                 },
                 yAxis: [
                     {
@@ -2682,6 +2706,16 @@
                             fontSize: 11,
                             fontWeight: 'bold',
                             formatter: params => (params.value === '-' || params.value === null) ? '⚡待定' : `$${params.value}`
+                        },
+                        markPoint: {
+                            symbol: 'pin',
+                            symbolSize: 36,
+                            itemStyle: { color: '#D97706' },
+                            label: { fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' },
+                            data: [
+                                { type: 'max', name: '最高成交价' },
+                                { type: 'min', name: '最低成交价' }
+                            ]
                         },
                         data: dealPrices
                     },
@@ -2815,12 +2849,36 @@
                     textStyle: { color: '#475569', fontSize: 11 },
                     top: 0
                 },
-                grid: { top: 45, bottom: 30, left: 55, right: 50 },
+                grid: { top: 45, bottom: dates.length > 15 ? 48 : 30, left: 55, right: 50 },
+                dataZoom: [
+                    {
+                        type: 'slider',
+                        show: dates.length > 15,
+                        xAxisIndex: 0,
+                        startValue: Math.max(0, dates.length - 25),
+                        endValue: dates.length - 1,
+                        height: 18,
+                        bottom: 4,
+                        borderColor: 'transparent',
+                        backgroundColor: '#F1F5F9',
+                        fillerColor: 'rgba(2, 132, 199, 0.18)',
+                        handleSize: '100%',
+                        handleStyle: { color: '#0284C7' },
+                        textStyle: { color: '#64748B', fontSize: 10 }
+                    },
+                    {
+                        type: 'inside',
+                        xAxisIndex: 0,
+                        zoomOnMouseWheel: true,
+                        moveOnMouseMove: true,
+                        moveOnMouseWheel: true
+                    }
+                ],
                 xAxis: {
                     type: 'category',
                     data: dates,
                     axisLine: { lineStyle: { color: '#CBD5E1' } },
-                    axisLabel: { color: '#475569', fontSize: 11 }
+                    axisLabel: { color: '#475569', fontSize: 11, interval: 'auto', hideOverlap: true }
                 },
                 yAxis: [
                     {
@@ -2871,6 +2929,16 @@
                             fontSize: 11,
                             fontWeight: 'bold',
                             formatter: params => (params.value === '-' || params.value === null) ? '⚡待定' : `¥${params.value}`
+                        },
+                        markPoint: {
+                            symbol: 'pin',
+                            symbolSize: 36,
+                            itemStyle: { color: '#0284C7' },
+                            label: { fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' },
+                            data: [
+                                { type: 'max', name: '最高成交价' },
+                                { type: 'min', name: '最低成交价' }
+                            ]
                         },
                         data: dealPrices
                     },
@@ -3018,12 +3086,36 @@
                     textStyle: { color: '#475569', fontSize: 11 },
                     top: 0
                 },
-                grid: { top: 45, bottom: 30, left: 55, right: 50 },
+                grid: { top: 45, bottom: dates.length > 15 ? 48 : 30, left: 55, right: 50 },
+                dataZoom: [
+                    {
+                        type: 'slider',
+                        show: dates.length > 15,
+                        xAxisIndex: 0,
+                        startValue: Math.max(0, dates.length - 25),
+                        endValue: dates.length - 1,
+                        height: 18,
+                        bottom: 4,
+                        borderColor: 'transparent',
+                        backgroundColor: '#F1F5F9',
+                        fillerColor: 'rgba(5, 150, 105, 0.18)',
+                        handleSize: '100%',
+                        handleStyle: { color: '#059669' },
+                        textStyle: { color: '#64748B', fontSize: 10 }
+                    },
+                    {
+                        type: 'inside',
+                        xAxisIndex: 0,
+                        zoomOnMouseWheel: true,
+                        moveOnMouseMove: true,
+                        moveOnMouseWheel: true
+                    }
+                ],
                 xAxis: {
                     type: 'category',
                     data: dates,
                     axisLine: { lineStyle: { color: '#CBD5E1' } },
-                    axisLabel: { color: '#475569', fontSize: 11 }
+                    axisLabel: { color: '#475569', fontSize: 11, interval: 'auto', hideOverlap: true }
                 },
                 yAxis: [
                     {
@@ -3074,6 +3166,16 @@
                             fontSize: 11,
                             fontWeight: 'bold',
                             formatter: params => (params.value === '-' || params.value === null) ? '⚡待定' : `${currencySym}${params.value}`
+                        },
+                        markPoint: {
+                            symbol: 'pin',
+                            symbolSize: 36,
+                            itemStyle: { color: '#059669' },
+                            label: { fontSize: 10, fontWeight: 'bold', color: '#FFFFFF' },
+                            data: [
+                                { type: 'max', name: '最高成交价' },
+                                { type: 'min', name: '最低成交价' }
+                            ]
                         },
                         data: dealPrices
                     },
@@ -3333,7 +3435,31 @@
                     top: 0,
                     textStyle: { color: '#475569', fontSize: 11 }
                 },
-                grid: { top: 46, bottom: 38, left: 55, right: 40 },
+                grid: { top: 46, bottom: categories.length > 15 ? 54 : 38, left: 55, right: 40 },
+                dataZoom: [
+                    {
+                        type: 'slider',
+                        show: categories.length > 15,
+                        xAxisIndex: 0,
+                        startValue: Math.max(0, categories.length - 25),
+                        endValue: categories.length - 1,
+                        height: 18,
+                        bottom: 4,
+                        borderColor: 'transparent',
+                        backgroundColor: '#F1F5F9',
+                        fillerColor: 'rgba(99, 102, 241, 0.18)',
+                        handleSize: '100%',
+                        handleStyle: { color: '#6366F1' },
+                        textStyle: { color: '#64748B', fontSize: 10 }
+                    },
+                    {
+                        type: 'inside',
+                        xAxisIndex: 0,
+                        zoomOnMouseWheel: true,
+                        moveOnMouseMove: true,
+                        moveOnMouseWheel: true
+                    }
+                ],
                 xAxis: {
                     type: 'category',
                     data: categories,
@@ -3859,7 +3985,31 @@
                         `;
                     }
                 },
-                grid: { top: 45, bottom: isAll ? 56 : 42, left: 65, right: 55 },
+                grid: { top: 45, bottom: sortedAll.length > 15 ? (isAll ? 74 : 60) : (isAll ? 56 : 42), left: 65, right: 55 },
+                dataZoom: [
+                    {
+                        type: 'slider',
+                        show: sortedAll.length > 15,
+                        xAxisIndex: 0,
+                        startValue: Math.max(0, sortedAll.length - 25),
+                        endValue: sortedAll.length - 1,
+                        height: 18,
+                        bottom: 4,
+                        borderColor: 'transparent',
+                        backgroundColor: '#F1F5F9',
+                        fillerColor: 'rgba(2, 132, 199, 0.18)',
+                        handleSize: '100%',
+                        handleStyle: { color: '#0284C7' },
+                        textStyle: { color: '#64748B', fontSize: 10 }
+                    },
+                    {
+                        type: 'inside',
+                        xAxisIndex: 0,
+                        zoomOnMouseWheel: true,
+                        moveOnMouseMove: true,
+                        moveOnMouseWheel: true
+                    }
+                ],
                 xAxis: {
                     type: 'category',
                     data: xLabels,
